@@ -157,40 +157,44 @@ export default function App() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Helper to push all state to Supabase - Refactored to prevent race conditions
+  // Helper to push all state to Supabase - Refactored for better React compliance
   const persist = async (updates) => {
     setSyncing(true);
+    let latestData;
     
-    // Use functional update to ensure we always have the latest state
+    // 1. Update local state immediately with functional update
     setAppData(prev => {
-      const nextData = { ...prev, ...updates };
-      
-      // Perform the async Supabase call with the calculated nextData
-      const performUpsert = async () => {
-        const { error } = await supabase
-          .from('conference_data')
-          .upsert({ 
-            id: DATA_ROW_ID, 
-            inventory: nextData.inventory, 
-            budget: nextData.budgets, 
-            issues: nextData.issues,
-            updated_at: new Date().toISOString()
-          });
-        
-        if (error) {
-          console.error("Persist Error:", error);
-          setErrorMsg(error.message || "Failed to save changes.");
-          setIsOnline(false);
-        } else {
-          setIsOnline(true);
-          setErrorMsg(null);
-        }
-        setSyncing(false);
-      };
-
-      performUpsert();
-      return nextData;
+      latestData = { ...prev, ...updates };
+      return latestData;
     });
+    
+    // 2. Perform the async Supabase call with the calculated latestData
+    try {
+      const { error } = await supabase
+        .from('conference_data')
+        .upsert({ 
+          id: DATA_ROW_ID, 
+          inventory: latestData.inventory, 
+          budget: latestData.budgets, 
+          issues: latestData.issues,
+          updated_at: new Date().toISOString()
+        });
+      
+      if (error) {
+        console.error("Persist Error:", error);
+        setErrorMsg(error.message || "Failed to save changes.");
+        setIsOnline(false);
+      } else {
+        setIsOnline(true);
+        setErrorMsg(null);
+      }
+    } catch (e) {
+      console.error("Unexpected Persist Error:", e);
+      setErrorMsg("Network error during save.");
+      setIsOnline(false);
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -279,12 +283,16 @@ export default function App() {
 function ExecutiveDashboard({ appData }) {
   const { inventory, budgets } = appData;
   
-  const totalRevenue = Object.values(budgets).reduce((sum, b) => sum + (Number(b.totalWorkshopAmount) || 0), 0);
-  const totalFoodCost = Object.values(budgets).reduce((sum, b) => sum + (Number(b.totalCost) || 0), 0);
+  const budgetList = Object.values(budgets);
+  const totalRevenue = budgetList.reduce((sum, b) => sum + (Number(b.totalWorkshopAmount) || 0), 0);
+  const totalFoodCost = budgetList.reduce((sum, b) => sum + (Number(b.totalCost) || 0), 0);
   const totalStockValue = inventory.reduce((sum, i) => sum + ((Number(i.stock) || 0) * (Number(i.price) || 0)), 0);
   
-  const completedBudgets = Object.values(budgets).filter(b => b.status === "Completed").length;
-  const activeBudgets = Object.values(budgets).filter(b => !["Completed", "Cancelled"].includes(b.status || "Draft")).length;
+  const completedBudgets = budgetList.filter(b => b.status === "Completed" || b.status?.includes("Returned"));
+  const activeBudgets = budgetList.filter(b => !["Completed", "Cancelled"].includes(b.status || "Draft"));
+
+  const actualRevenue = completedBudgets.reduce((sum, b) => sum + (Number(b.totalWorkshopAmount) || 0), 0);
+  const actualFoodCost = completedBudgets.reduce((sum, b) => sum + (Number(b.totalCost) || 0), 0);
 
   return (
     <div className="fade-in">
@@ -295,15 +303,35 @@ function ExecutiveDashboard({ appData }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.5rem", marginBottom: "2rem" }}>
         <div className="card" style={{ borderLeft: "4px solid var(--primary-color)" }}>
-          <p style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Expected Revenue</p>
+          <p style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Expected Revenue (All)</p>
           <h3 style={{ fontSize: "1.5rem", fontWeight: 800, marginTop: "0.5rem" }}>KES {totalRevenue.toLocaleString()}</h3>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.5rem" }}>From all registered workshop events</p>
+          <div style={{ marginTop: "0.75rem", display: "flex", gap: "1rem" }}>
+             <div>
+               <p style={{ fontSize: "0.65rem", color: "var(--text-secondary)" }}>PROJETED</p>
+               <p style={{ fontWeight: 700, color: "var(--primary-color)" }}>KES {(totalRevenue - actualRevenue).toLocaleString()}</p>
+             </div>
+             <div>
+               <p style={{ fontSize: "0.65rem", color: "var(--text-secondary)" }}>REALIZED</p>
+               <p style={{ fontWeight: 700, color: "var(--success-color)" }}>KES {actualRevenue.toLocaleString()}</p>
+             </div>
+          </div>
         </div>
+
         <div className="card" style={{ borderLeft: "4px solid var(--success-color)" }}>
           <p style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Total Budgeted Food Cost</p>
           <h3 style={{ fontSize: "1.5rem", fontWeight: 800, marginTop: "0.5rem" }}>KES {totalFoodCost.toLocaleString()}</h3>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.5rem" }}>Cumulative across all budgets</p>
+          <div style={{ marginTop: "0.75rem", display: "flex", gap: "1rem" }}>
+             <div>
+               <p style={{ fontSize: "0.65rem", color: "var(--text-secondary)" }}>PENDING</p>
+               <p style={{ fontWeight: 700, color: "var(--text-primary)" }}>KES {(totalFoodCost - actualFoodCost).toLocaleString()}</p>
+             </div>
+             <div>
+               <p style={{ fontSize: "0.65rem", color: "var(--text-secondary)" }}>FINALIZED</p>
+               <p style={{ fontWeight: 700, color: "var(--success-color)" }}>KES {actualFoodCost.toLocaleString()}</p>
+             </div>
+          </div>
         </div>
+
         <div className="card" style={{ borderLeft: "4px solid var(--primary-color)", background: "var(--primary-light)" }}>
           <p style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--primary-color)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Current Stock Value</p>
           <h3 style={{ fontSize: "1.5rem", fontWeight: 800, marginTop: "0.5rem", color: "var(--primary-hover)" }}>KES {totalStockValue.toLocaleString()}</h3>
@@ -316,11 +344,11 @@ function ExecutiveDashboard({ appData }) {
           <h4 style={{ fontWeight: 800, marginBottom: "1rem" }}>System Health</h4>
           <div style={{ display: "flex", justifyContent: "space-between", padding: "0.75rem 0", borderBottom: "1px solid var(--border-light)" }}>
             <span style={{ color: "var(--text-secondary)" }}>Active Events</span>
-            <span style={{ fontWeight: 700 }}>{activeBudgets}</span>
+            <span style={{ fontWeight: 700, color: "var(--primary-color)" }}>{activeBudgets.length}</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", padding: "0.75rem 0", borderBottom: "1px solid var(--border-light)" }}>
             <span style={{ color: "var(--text-secondary)" }}>Completed Events</span>
-            <span style={{ fontWeight: 700 }}>{completedBudgets}</span>
+            <span style={{ fontWeight: 700, color: "var(--success-color)" }}>{completedBudgets.length}</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", padding: "0.75rem 0" }}>
             <span style={{ color: "var(--text-secondary)" }}>Inventory Size</span>

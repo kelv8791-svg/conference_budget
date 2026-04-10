@@ -70,7 +70,7 @@ function Login({ onLogin }) {
 
 export default function App() {
   const [role, setRole] = useState(null);
-  const [section, setSection] = useState(null);
+  const [section, setSection] = useState("summary");
   const [pinUnlocked, setPinUnlocked] = useState(false);
   const [preloadId, setPreloadId] = useState("");
   const [isClone, setIsClone] = useState(false);

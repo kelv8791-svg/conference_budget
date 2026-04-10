@@ -14,11 +14,13 @@ export default function Sidebar({
   const getNavItems = () => {
     switch(role) {
       case "chef": return [
+        { id: "summary", icon: LayoutDashboard, label: "Executive Dashboard" },
         { id: "budget", icon: FileText, label: "Budget Builder" },
         { id: "issues", icon: ClipboardList, label: "Consumption Track" },
         { id: "past_budgets", icon: History, label: "Past Budgets" }
       ];
       case "storekeeper": return [
+        { id: "summary", icon: LayoutDashboard, label: "Executive Dashboard" },
         { id: "inventory", icon: PackageSearch, label: "Master Inventory" },
         { id: "issues", icon: ClipboardList, label: "Daily Issues" },
         { id: "past_budgets", icon: History, label: "Past Budgets" }

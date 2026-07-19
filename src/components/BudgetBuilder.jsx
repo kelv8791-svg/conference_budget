@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CATEGORY_COLORS } from '../store';
-import { FileDown, Printer, Save, Plus, Trash2 } from 'lucide-react';
+import { FileDown, Printer, Save, Plus, Trash2, Edit } from 'lucide-react';
 import { generateBudgetPDF } from '../utils/pdfExport';
 
 export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadId, onClearPreload, isClone, setSection }) {
@@ -9,10 +9,9 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
   // Form State
   const [orgName, setOrgName] = useState("");
   const [groupType, setGroupType] = useState("Conference");
-  const [pax, setPax] = useState(100);
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [conferenceRate, setConferenceRate] = useState(0);
+  const [eventGroups, setEventGroups] = useState([
+    { name: "", pax: 12, startDate: "", endDate: "", rate: 3500 }
+  ]);
   const [selectedItems, setSelectedItems] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -30,28 +29,54 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
     };
   });
   const isCompleted = budgets[editingBudgetId]?.status === "Completed" || budgets[editingBudgetId]?.status?.includes("Returned");
-
-  const calculateDays = () => {
-    if (startDate && endDate) {
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const diffTime = end - start;
+  const calculateGroupDays = (start, end) => {
+    if (start && end) {
+      const s = new Date(start);
+      const e = new Date(end);
+      const diffTime = e - s;
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
       return diffDays > 0 ? diffDays : 1;
     }
     return 1;
   };
-  const days = calculateDays();
-  const displayDates = startDate && endDate ? `${startDate} to ${endDate}` : "N/A";
+
+  const getOverallDates = () => {
+    const starts = eventGroups.map(g => g.startDate).filter(d => d);
+    const ends = eventGroups.map(g => g.endDate).filter(d => d);
+    if (starts.length === 0 || ends.length === 0) return "N/A";
+    const minStart = starts.sort()[0];
+    const maxEnd = ends.sort().reverse()[0];
+    return `${minStart} to ${maxEnd}`;
+  };
+
+  const displayDates = getOverallDates();
+
+  const syncGroupsWithOrgName = (nameString) => {
+    const names = nameString.split(',').map(s => s.trim());
+    setEventGroups(prev => {
+      let next = [...prev];
+      if (names.length > next.length) {
+        for (let i = next.length; i < names.length; i++) {
+          next.push({ name: names[i], pax: 8, startDate: "", endDate: "", rate: 3500 });
+        }
+      } else if (names.length < next.length) {
+        next = next.slice(0, names.length);
+      }
+      return next.map((g, i) => ({ ...g, name: names[i] || "" }));
+    });
+  };
+
+  const updateGroup = (idx, field, val) => {
+    const next = [...eventGroups];
+    next[idx] = { ...next[idx], [field]: val };
+    setEventGroups(next);
+  };
 
   const loadBudget = (id) => {
     if (!id) {
       setEditingBudgetId("");
       setOrgName("");
-      setPax(100);
-      setStartDate("");
-      setEndDate("");
-      setConferenceRate(0);
+      setEventGroups([{ name: "", pax: 12, startDate: "", endDate: "", rate: 3500 }]);
       setSelectedItems([]);
       return;
     }
@@ -59,12 +84,24 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
     setEditingBudgetId(id);
     setOrgName(b.orgName || "");
     setGroupType(b.groupType || "Conference");
-    setPax(b.pax || 0);
-    setStartDate(b.startDate || "");
-    setEndDate(b.endDate || "");
-    setConferenceRate(b.conferenceRate || 0);
-    
-    // Ensure we load items and map them correctly if they are from an older version
+
+    // Migration logic for old budget format
+    if (b.eventGroups) {
+      setEventGroups(b.eventGroups);
+    } else {
+      const initialGroup = {
+        name: (b.orgName || "").split(',')[0].trim(),
+        pax: b.pax || 0,
+        startDate: b.startDate || "",
+        endDate: b.endDate || "",
+        rate: b.conferenceRate || 0
+      };
+      const others = (b.subGroups || []).map(sg => ({
+        name: sg.orgName, pax: sg.pax, startDate: sg.startDate, endDate: sg.endDate, rate: sg.conferenceRate || 0
+      }));
+      setEventGroups([initialGroup, ...others]);
+    }
+
     setSelectedItems(b.items || []);
   };
 
@@ -78,19 +115,35 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
           setEditingBudgetId("");
           setOrgName(`${b.orgName} (Copy)`);
           setGroupType(b.groupType || "Conference");
-          setPax(b.pax || 0);
-          setStartDate("");
-          setEndDate("");
-          setConferenceRate(b.conferenceRate || 0);
+          
+          if (b.eventGroups) {
+            setEventGroups(b.eventGroups.map(g => ({...g})));
+          } else {
+            setEventGroups([{ name: "", pax: b.pax || 0, startDate: "", endDate: "", rate: b.conferenceRate || 0 }]);
+          }
+          
           setSelectedItems(b.items.map(item => ({...item})));
         } else {
           setEditingBudgetId(preloadId);
           setOrgName(b.orgName || "");
           setGroupType(b.groupType || "Conference");
-          setPax(b.pax || 0);
-          setStartDate(b.startDate || "");
-          setEndDate(b.endDate || "");
-          setConferenceRate(b.conferenceRate || 0);
+          
+          if (b.eventGroups) {
+            setEventGroups(b.eventGroups);
+          } else {
+            const initialGroup = { 
+              name: (b.orgName || "").split(',')[0].trim(), 
+              pax: b.pax || 0, 
+              startDate: b.startDate || "", 
+              endDate: b.endDate || "", 
+              rate: b.conferenceRate || 0 
+            };
+            const others = (b.subGroups || []).map(sg => ({
+              name: sg.orgName, pax: sg.pax, startDate: sg.startDate, endDate: sg.endDate, rate: sg.conferenceRate || 0
+            }));
+            setEventGroups([initialGroup, ...others]);
+          }
+          
           setSelectedItems(b.items || []);
         }
         onClearPreload();
@@ -116,7 +169,13 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
   };
 
   const currentCost = enrichedItems.reduce((acc, curr) => acc + (Number(curr.budgetQty || 0) * Number(curr.price || 0)), 0);
-  const totalWorkshopAmount = (Number(pax) || 0) * (Number(conferenceRate) || 0) * (Number(days) || 1);
+  
+  const totalWorkshopAmount = eventGroups.reduce((acc, g) => {
+    const gDays = calculateGroupDays(g.startDate, g.endDate);
+    return acc + (Number(g.pax) || 0) * (Number(g.rate) || 0) * gDays;
+  }, 0);
+
+  const totalPax = eventGroups.reduce((acc, g) => acc + (Number(g.pax) || 0), 0);
   const targetFoodCost = totalWorkshopAmount * 0.25;
   const foodCostVariance = targetFoodCost - currentCost;
 
@@ -128,7 +187,9 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
     }
 
     if (selectedItems.length === 0) return alert("Please add items to the budget first.");
-    if (!startDate || !endDate) return alert("Please select both start and end dates.");
+    
+    const hasValidDates = eventGroups.every(g => g.startDate && g.endDate);
+    if (!hasValidDates) return alert("Please select both start and end dates for all groups.");
     
     // Enrich items with LATEST metadata (price, name, unit) before saving
     const itemsToSave = selectedItems.map(item => {
@@ -142,17 +203,19 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
       };
     });
 
-    const id = editingBudgetId || Date.now().toString();
+    const targetId = editingBudgetId || Date.now().toString();
+
     setBudgets({ 
       ...budgets, 
-      [id]: { 
-        id, orgName, groupType, name: budgetName, pax, startDate, endDate, days, dates: displayDates, conferenceRate, 
+      [targetId]: { 
+        id: targetId, orgName, groupType, name: budgetName, 
+        eventGroups, // Save the new groups array
         totalWorkshopAmount, targetFoodCost, totalCost: currentCost, items: itemsToSave, date: new Date().toISOString(),
-        status: budgets[id]?.status || "Draft" 
+        status: budgets[targetId]?.status || "Draft"
       } 
     });
     alert(`Budget ${editingBudgetId ? 'Updated' : 'Saved'} Successfully!`);
-    if (!editingBudgetId) setEditingBudgetId(id);
+    if (!editingBudgetId) setEditingBudgetId(targetId);
   };
 
   const handlePrint = () => window.print();
@@ -162,10 +225,9 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
       orgName, 
       groupType, 
       budgetName, 
-      pax, 
-      days, 
+      totalPax,
       displayDates, 
-      conferenceRate, 
+      eventGroups,
       totalWorkshopAmount, 
       targetFoodCost, 
       totalCost: currentCost, 
@@ -230,15 +292,41 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
         
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.75rem", marginBottom: "0.75rem", opacity: isCompleted ? 0.6 : 1, pointerEvents: isCompleted ? "none" : "auto" }}>
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.25rem", color: "var(--text-secondary)" }}>Organization Name</label>
-            <input className="input-field" style={{ height: "32px", fontSize: "0.85rem" }} placeholder="e.g. ODPC" value={orgName} onChange={e => setOrgName(e.target.value)} disabled={isCompleted} />
+            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.25rem", color: "var(--text-secondary)" }}>Organization Name(s) <span style={{ color: "var(--primary-color)", fontWeight: 800 }}>(Separate with comma for multiple groups)</span></label>
+            <input 
+              className="input-field" 
+              style={{ height: "32px", fontSize: "0.85rem" }} 
+              placeholder="e.g. KRA, ODPC" 
+              value={orgName} 
+              onChange={e => {
+                setOrgName(e.target.value);
+                syncGroupsWithOrgName(e.target.value);
+              }} 
+              disabled={isCompleted} 
+            />
           </div>
           <div>
             <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.25rem", color: "var(--text-secondary)" }}>Group Type</label>
-            <select className="input-field" style={{ height: "32px", fontSize: "0.85rem" }} value={groupType} onChange={e => setGroupType(e.target.value)} disabled={isCompleted}>
-              <option value="Conference">Conference</option>
-              <option value="Group Accommodation">Group Accommodation</option>
-            </select>
+            <input 
+              list="group-types"
+              className="input-field" 
+              style={{ height: "32px", fontSize: "0.85rem" }} 
+              value={groupType} 
+              onChange={e => setGroupType(e.target.value)} 
+              disabled={isCompleted}
+              placeholder="Select or type..."
+            />
+            <datalist id="group-types">
+              <option value="Conference" />
+              <option value="Day Conference" />
+              <option value="Day Conference & B.B Accommodation" />
+              <option value="Day Conference & H.B Accommodation" />
+              <option value="Half Day Conference" />
+              <option value="Team Building" />
+              <option value="Team Building & B.B Accommodation" />
+              <option value="Team Building & H.B Accommodation" />
+              <option value="Group Accommodation" />
+            </datalist>
           </div>
           <div>
             <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.25rem", color: "var(--text-secondary)" }}>Auto-Generated Name</label>
@@ -246,39 +334,67 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "0.75rem", opacity: isCompleted ? 0.6 : 1, pointerEvents: isCompleted ? "none" : "auto" }}>
-          <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.25rem", color: "var(--text-secondary)" }}>Start Date</label>
-            <input type="date" className="input-field" style={{ height: "32px", fontSize: "0.85rem" }} value={startDate} onChange={e => setStartDate(e.target.value)} disabled={isCompleted} />
-          </div>
-          <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.25rem", color: "var(--text-secondary)" }}>End Date</label>
-            <input type="date" className="input-field" style={{ height: "32px", fontSize: "0.85rem" }} value={endDate} onChange={e => setEndDate(e.target.value)} disabled={isCompleted} />
-          </div>
-          <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.25rem", color: "var(--text-secondary)" }}>Estimated PAX</label>
-            <input type="number" className="input-field" style={{ height: "32px", fontSize: "0.85rem" }} value={pax} onChange={e => setPax(Number(e.target.value))} disabled={isCompleted} />
-          </div>
-          <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.25rem", color: "var(--text-secondary)" }}>Rate (KES)</label>
-            <input type="number" className="input-field" style={{ height: "32px", fontSize: "0.85rem" }} value={conferenceRate} onChange={e => setConferenceRate(Number(e.target.value))} disabled={isCompleted} />
-          </div>
+        <div style={{ maxHeight: "300px", overflowY: "auto", marginTop: "0.5rem" }}>
+          {eventGroups.map((group, idx) => (
+            <div key={idx} style={{ 
+              display: "grid", 
+              gridTemplateColumns: "1.2fr 1fr 1fr 0.8fr 0.8fr", 
+              gap: "0.75rem", 
+              marginBottom: "0.75rem", 
+              padding: "0.75rem", 
+              background: "white", 
+              borderRadius: "0.5rem", 
+              border: "1px solid #FED7AA",
+              opacity: isCompleted ? 0.6 : 1, 
+              pointerEvents: isCompleted ? "none" : "auto" 
+            }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.65rem", fontWeight: 700, marginBottom: "0.25rem", color: "#9A3412", textTransform: "uppercase" }}>Group {idx + 1}: {group.name || 'Unnamed'}</label>
+                <div style={{ height: "32px", fontSize: "0.85rem", display: "flex", alignItems: "center", fontWeight: 700, color: "var(--primary-color)" }}>{group.name || "Enter name above"}</div>
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "0.65rem", fontWeight: 700, marginBottom: "0.25rem", color: "var(--text-secondary)" }}>Start Date</label>
+                <input type="date" className="input-field" style={{ height: "32px", fontSize: "0.85rem", marginBottom: 0 }} value={group.startDate} onChange={e => updateGroup(idx, 'startDate', e.target.value)} disabled={isCompleted} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "0.65rem", fontWeight: 700, marginBottom: "0.25rem", color: "var(--text-secondary)" }}>End Date</label>
+                <input type="date" className="input-field" style={{ height: "32px", fontSize: "0.85rem", marginBottom: 0 }} value={group.endDate} onChange={e => updateGroup(idx, 'endDate', e.target.value)} disabled={isCompleted} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "0.65rem", fontWeight: 700, marginBottom: "0.25rem", color: "var(--text-secondary)" }}>PAX</label>
+                <input type="number" className="input-field" style={{ height: "32px", fontSize: "0.85rem", marginBottom: 0 }} value={group.pax} onChange={e => updateGroup(idx, 'pax', Number(e.target.value))} disabled={isCompleted} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "0.65rem", fontWeight: 700, marginBottom: "0.25rem", color: "var(--text-secondary)" }}>Rate (KES)</label>
+                <input type="number" className="input-field" style={{ height: "32px", fontSize: "0.85rem", marginBottom: 0 }} value={group.rate} onChange={e => updateGroup(idx, 'rate', Number(e.target.value))} disabled={isCompleted} />
+              </div>
+            </div>
+          ))}
         </div>
         
         <div style={{ marginTop: "0.75rem", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #FED7AA", paddingTop: "0.75rem" }}>
-           <p style={{ fontSize: "0.75rem", color: "#9A3412", fontWeight: 600 }}>Duration: {days} Days</p>
+           <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+              <p style={{ fontSize: "0.75rem", color: "#9A3412", fontWeight: 800 }}>Total Event PAX: {totalPax}</p>
+              <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", fontWeight: 600 }}>Overall Dates: {displayDates}</p>
+           </div>
            <div style={{ display: "flex", gap: "1rem" }}>
              <div style={{ textAlign: "right" }}>
                 <span style={{ fontSize: "0.6rem", color: "var(--text-secondary)", textTransform: "uppercase", fontWeight: 700 }}>Revenue Target</span>
                 <p style={{ fontWeight: 800, color: "var(--primary-color)", fontSize: "0.9rem" }}>KES {totalWorkshopAmount.toLocaleString(undefined, {minimumFractionDigits:2})}</p>
              </div>
              <div style={{ textAlign: "right", paddingLeft: "1rem", borderLeft: "1px solid #FED7AA" }}>
-                <span style={{ fontSize: "0.6rem", color: "var(--text-secondary)", textTransform: "uppercase", fontWeight: 700 }}>Food Allowance</span>
-                <p style={{ fontWeight: 800, color: "var(--success-color)", fontSize: "0.9rem" }}>KES {targetFoodCost.toLocaleString(undefined, {minimumFractionDigits:2})}</p>
+                <span style={{ fontSize: "0.6rem", color: "var(--text-secondary)", textTransform: "uppercase", fontWeight: 700 }} title="Sum of (Budget Qty * Market Price)">Actual Estimated Cost</span>
+                <p style={{ fontWeight: 800, color: foodCostVariance < 0 ? "var(--danger-color)" : "var(--success-color)", fontSize: "0.9rem" }}>KES {currentCost.toLocaleString(undefined, {minimumFractionDigits:2})}</p>
+             </div>
+             <div style={{ textAlign: "right", paddingLeft: "1rem", borderLeft: "1px solid #FED7AA" }}>
+                <span style={{ fontSize: "0.6rem", color: "var(--text-secondary)", textTransform: "uppercase", fontWeight: 700 }}>Food Allowance (25%)</span>
+                <p style={{ fontWeight: 800, color: "var(--primary-color)", fontSize: "0.9rem" }}>KES {targetFoodCost.toLocaleString(undefined, {minimumFractionDigits:2})}</p>
              </div>
            </div>
         </div>
       </div>
+
+
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "1rem" }} className="no-print">
         <div className="card" style={{ maxHeight: "60vh", overflowY: "auto", padding: "1rem", background: "rgba(120, 113, 108, 0.05)", border: "1px solid rgba(120, 113, 108, 0.1)", opacity: isCompleted ? 0.5 : 1, pointerEvents: isCompleted ? "none" : "auto" }}>
@@ -375,6 +491,18 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
           </div>
         </div>
       </div>
+      <style>{`
+        .no-print::-webkit-scrollbar {
+          width: 6px;
+        }
+        .no-print::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .no-print::-webkit-scrollbar-thumb {
+          background: #FED7AA;
+          border-radius: 10px;
+        }
+      `}</style>
     </div>
   );
 }

@@ -83,11 +83,13 @@ export default function App() {
   const [appData, setAppData] = useState({
     inventory: DEFAULT_INVENTORY,
     budgets: {},
-    issues: {}
+    issues: {},
+    lastCommit: null
   });
 
   // Keep a ref to the latest state to avoid stale closures in sync logic
   const dataRef = React.useRef(appData);
+  // Also keep it in sync with initial load and realtime updates
   useEffect(() => { dataRef.current = appData; }, [appData]);
 
   // Sync with Supabase on mount
@@ -101,14 +103,15 @@ export default function App() {
           .single();
         
         if (data) {
-          // Deduplicate inventory by ID to ensure data integrity
-          const rawInv = data.inventory || DEFAULT_INVENTORY;
+          // Deduplicate inventory by ID and fallback to defaults if empty
+          const rawInv = (data.inventory && data.inventory.length > 0) ? data.inventory : DEFAULT_INVENTORY;
           const cleanInv = Array.from(new Map(rawInv.map(item => [item.id, item])).values());
           
           setAppData({
             inventory: cleanInv,
             budgets: data.budget || {},
-            issues: data.issues || {}
+            issues: data.issues || {},
+            lastCommit: data.updated_at // Using updated_at as initial commit ref
           });
           setIsOnline(true);
         } else {
@@ -130,21 +133,27 @@ export default function App() {
 
     fetchData();
 
-    // Subscribe to real-time changes
+// Subscribe to real-time changes
     const channel = supabase
       .channel('conference-sync')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'conference_data', 
-        filter: `id=eq.${DATA_ROW_ID}` 
-      }, 
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'conference_data',
+        filter: `id=eq.${DATA_ROW_ID}`
+      },
         (payload) => {
-          if (payload.new && payload.commit_timestamp !== dataRef.current.lastCommit) {
+          if (payload.new && payload.new.updated_at !== dataRef.current.lastCommit) {
+            // Deduplicate inventory by ID, merge with existing if incoming is incomplete
+            const incomingInv = payload.new.inventory || [];
+            const cleanInv = Array.from(new Map(incomingInv.map(item => [item.id, item])).values());
+            const finalInv = cleanInv.length > 0 ? cleanInv : dataRef.current.inventory;
+
             setAppData({
-              inventory: payload.new.inventory || DEFAULT_INVENTORY,
-              budgets: payload.new.budget || {},
-              issues: payload.new.issues || {}
+              inventory: finalInv,
+              budgets: payload.new.budget || dataRef.current.budgets,
+              issues: payload.new.issues || dataRef.current.issues,
+              lastCommit: payload.new.updated_at
             });
             setIsOnline(true);
           }
@@ -157,34 +166,43 @@ export default function App() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Helper to push all state to Supabase - Refactored for better React compliance
+// Helper to push all state to Supabase - Refactored for better React compliance
   const persist = async (updates) => {
     setSyncing(true);
-    let latestData;
+
+    // 1. Compute latest data from existing state + updates
+    const latestData = { ...dataRef.current, ...updates };
+
+    // 2. Ensure inventory is never empty and always deduplicated
+    const cleanInv = Array.from(new Map((latestData.inventory || []).map(item => [item.id, item])).values());
+    const finalData = { ...latestData, inventory: cleanInv.length > 0 ? cleanInv : DEFAULT_INVENTORY };
+
+    // 3. Update BOTH the ref and the state
+    // Updating the ref synchronously ensures next call to persist() gets the right base
+    dataRef.current = finalData;
+    setAppData(finalData);
     
-    // 1. Update local state immediately with functional update
-    setAppData(prev => {
-      latestData = { ...prev, ...updates };
-      return latestData;
-    });
-    
-    // 2. Perform the async Supabase call with the calculated latestData
-    try {
-      const { error } = await supabase
+    // 3. Perform the async Supabase call
+try {
+      const { data, error } = await supabase
         .from('conference_data')
-        .upsert({ 
-          id: DATA_ROW_ID, 
-          inventory: latestData.inventory, 
-          budget: latestData.budgets, 
-          issues: latestData.issues,
+        .upsert({
+          id: DATA_ROW_ID,
+          inventory: finalData.inventory,
+          budget: finalData.budgets,
+          issues: finalData.issues,
           updated_at: new Date().toISOString()
-        });
+        })
+        .select('updated_at')
+        .single();
       
       if (error) {
         console.error("Persist Error:", error);
         setErrorMsg(error.message || "Failed to save changes.");
         setIsOnline(false);
       } else {
+        // Update local lastCommit with the server-generated timestamp
+        setAppData(prev => ({ ...prev, lastCommit: data.updated_at }));
         setIsOnline(true);
         setErrorMsg(null);
       }
@@ -198,6 +216,35 @@ export default function App() {
   };
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // Manual refresh function for sync recovery
+  const refreshData = async () => {
+    if (syncing) return;
+    try {
+      const { data } = await supabase
+        .from('conference_data')
+        .select('*')
+        .eq('id', DATA_ROW_ID)
+        .single();
+
+      if (data) {
+        const rawInv = (data.inventory && data.inventory.length > 0) ? data.inventory : DEFAULT_INVENTORY;
+        const cleanInv = Array.from(new Map(rawInv.map(item => [item.id, item])).values());
+
+        setAppData({
+          inventory: cleanInv,
+          budgets: data.budget || {},
+          issues: data.issues || {},
+          lastCommit: data.updated_at
+        });
+        setIsOnline(true);
+        setErrorMsg(null);
+      }
+    } catch (err) {
+      setErrorMsg(err.message || "Refresh failed. Check connection.");
+      setIsOnline(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -224,16 +271,18 @@ export default function App() {
 
   return (
     <div className={`app-container ${isSidebarCollapsed ? 'collapsed' : ''}`} style={{ display: "flex", background: "var(--bg-body)", minHeight: "100vh", position: "relative" }}>
-      <Sidebar 
-        role={role} 
-        active={section} 
-        onNav={setSection} 
-        onLogout={() => { setRole(null); setSection(null); setPinUnlocked(false); }} 
+<Sidebar
+        role={role}
+        active={section}
+        onNav={setSection}
+        onLogout={() => { setRole(null); setSection(null); setPinUnlocked(false); }}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         isOnline={isOnline}
         syncing={syncing}
         errorMsg={errorMsg}
+        lowStockCount={appData.inventory.filter(i => i.stock < 10).length}
+        onRefresh={refreshData}
       />
       <div className="app-content" style={{ 
         flex: 1, 
@@ -283,22 +332,30 @@ export default function App() {
 function ExecutiveDashboard({ appData }) {
   const { inventory, budgets } = appData;
   
-  const budgetList = Object.values(budgets);
+  const budgetList = Object.values(budgets).sort((a, b) => new Date(b.date) - new Date(a.date));
   const totalRevenue = budgetList.reduce((sum, b) => sum + (Number(b.totalWorkshopAmount) || 0), 0);
   const totalFoodCost = budgetList.reduce((sum, b) => sum + (Number(b.totalCost) || 0), 0);
   const totalStockValue = inventory.reduce((sum, i) => sum + ((Number(i.stock) || 0) * (Number(i.price) || 0)), 0);
   
   const completedBudgets = budgetList.filter(b => b.status === "Completed" || b.status?.includes("Returned"));
-  const activeBudgets = budgetList.filter(b => !["Completed", "Cancelled"].includes(b.status || "Draft"));
-
   const actualRevenue = completedBudgets.reduce((sum, b) => sum + (Number(b.totalWorkshopAmount) || 0), 0);
   const actualFoodCost = completedBudgets.reduce((sum, b) => sum + (Number(b.totalCost) || 0), 0);
 
+  const lowStockItems = inventory.filter(i => i.stock < 10);
+
   return (
     <div className="fade-in">
-      <div style={{ marginBottom: "2rem" }}>
-        <h2 style={{ fontSize: "1.75rem", fontWeight: 800 }}>📊 Executive Dashboard</h2>
-        <p style={{ color: "var(--text-secondary)", marginTop: "0.25rem" }}>High-level financial summaries and operational health metrics.</p>
+      <div style={{ marginBottom: "2rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <h2 style={{ fontSize: "1.75rem", fontWeight: 800 }}>📊 Executive Dashboard</h2>
+          <p style={{ color: "var(--text-secondary)", marginTop: "0.25rem" }}>High-level financial summaries and operational health metrics.</p>
+        </div>
+        {lowStockItems.length > 0 && (
+          <div style={{ background: "var(--danger-light)", color: "var(--danger-color)", padding: "0.5rem 1rem", borderRadius: "0.75rem", display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 700, fontSize: "0.875rem", animation: "pulse 2s infinite" }}>
+            <Store size={18} />
+            {lowStockItems.length} items low on stock
+          </div>
+        )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.5rem", marginBottom: "2rem" }}>
@@ -307,7 +364,7 @@ function ExecutiveDashboard({ appData }) {
           <h3 style={{ fontSize: "1.5rem", fontWeight: 800, marginTop: "0.5rem" }}>KES {totalRevenue.toLocaleString()}</h3>
           <div style={{ marginTop: "0.75rem", display: "flex", gap: "1rem" }}>
              <div>
-               <p style={{ fontSize: "0.65rem", color: "var(--text-secondary)" }}>PROJETED</p>
+               <p style={{ fontSize: "0.65rem", color: "var(--text-secondary)" }}>PROJECTED</p>
                <p style={{ fontWeight: 700, color: "var(--primary-color)" }}>KES {(totalRevenue - actualRevenue).toLocaleString()}</p>
              </div>
              <div>
@@ -332,30 +389,89 @@ function ExecutiveDashboard({ appData }) {
           </div>
         </div>
 
-        <div className="card" style={{ borderLeft: "4px solid var(--primary-color)", background: "var(--primary-light)" }}>
+        <div className="card" style={{ borderLeft: "4px solid var(--primary-color)", background: "linear-gradient(135deg, var(--primary-light) 0%, #fff 100%)" }}>
           <p style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--primary-color)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Current Stock Value</p>
           <h3 style={{ fontSize: "1.5rem", fontWeight: 800, marginTop: "0.5rem", color: "var(--primary-hover)" }}>KES {totalStockValue.toLocaleString()}</h3>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.5rem" }}>Value of all items in Master Inventory</p>
+          <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.5rem" }}>Value of {inventory.length} items in Master Inventory</p>
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: "1.5rem" }}>
+        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "1.25rem", borderBottom: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h4 style={{ fontWeight: 800 }}>Recent Budgets</h4>
+            <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)", fontWeight: 600 }}>Total: {budgetList.length}</span>
+          </div>
+          <div className="table-wrapper" style={{ border: "none", borderRadius: 0 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Organization</th>
+                  <th>Status</th>
+                  <th>Revenue</th>
+                  <th style={{ textAlign: "right" }}>Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {budgetList.slice(0, 5).map(b => (
+                  <tr key={b.id}>
+                    <td style={{ fontWeight: 600 }}>{b.orgName || b.name}</td>
+                    <td>
+                      <span className="badge" style={{ 
+                        background: b.status === "Completed" ? "var(--success-light)" : b.status === "Draft" ? "var(--bg-body)" : "var(--primary-light)",
+                        color: b.status === "Completed" ? "var(--success-color)" : b.status === "Draft" ? "var(--text-secondary)" : "var(--primary-color)"
+                      }}>
+                        {b.status || "Draft"}
+                      </span>
+                    </td>
+                    <td style={{ fontWeight: 500 }}>KES {Number(b.totalWorkshopAmount).toLocaleString()}</td>
+                    <td style={{ textAlign: "right", fontWeight: 600 }}>KES {Number(b.totalCost).toLocaleString()}</td>
+                  </tr>
+                ))}
+                {budgetList.length === 0 && (
+                  <tr>
+                    <td colSpan="4" style={{ textAlign: "center", padding: "2rem", color: "var(--text-secondary)" }}>No budgets recorded yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div className="card">
-          <h4 style={{ fontWeight: 800, marginBottom: "1rem" }}>System Health</h4>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "0.75rem 0", borderBottom: "1px solid var(--border-light)" }}>
-            <span style={{ color: "var(--text-secondary)" }}>Active Events</span>
-            <span style={{ fontWeight: 700, color: "var(--primary-color)" }}>{activeBudgets.length}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "0.75rem 0", borderBottom: "1px solid var(--border-light)" }}>
-            <span style={{ color: "var(--text-secondary)" }}>Completed Events</span>
-            <span style={{ fontWeight: 700, color: "var(--success-color)" }}>{completedBudgets.length}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "0.75rem 0" }}>
-            <span style={{ color: "var(--text-secondary)" }}>Inventory Size</span>
-            <span style={{ fontWeight: 700 }}>{inventory.length} Items</span>
+          <h4 style={{ fontWeight: 800, marginBottom: "1.25rem" }}>Inventory Health</h4>
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "1rem", background: "var(--bg-body)", borderRadius: "0.75rem" }}>
+              <div>
+                <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", fontWeight: 600, textTransform: "uppercase" }}>Low Stock Items</p>
+                <p style={{ fontSize: "1.25rem", fontWeight: 800, color: lowStockItems.length > 0 ? "var(--danger-color)" : "var(--success-color)" }}>{lowStockItems.length}</p>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", fontWeight: 600, textTransform: "uppercase" }}>Critical (0)</p>
+                <p style={{ fontSize: "1.25rem", fontWeight: 800 }}>{inventory.filter(i => i.stock <= 0).length}</p>
+              </div>
+            </div>
+            
+            <div style={{ marginTop: "0.5rem" }}>
+              <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", fontWeight: 700, textTransform: "uppercase", marginBottom: "0.75rem" }}>Top Low Stock Items</p>
+              {lowStockItems.slice(0, 4).map(item => (
+                <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.5rem 0", borderBottom: "1px solid var(--border-light)" }}>
+                  <span style={{ fontSize: "0.875rem", fontWeight: 500 }}>{item.name}</span>
+                  <span style={{ fontWeight: 700, color: item.stock <= 0 ? "var(--danger-color)" : "var(--warning-color)" }}>{item.stock} {item.unit}</span>
+                </div>
+              ))}
+              {lowStockItems.length === 0 && <p style={{ fontSize: "0.875rem", color: "var(--success-color)", textAlign: "center", padding: "1rem" }}>✅ All stock levels healthy</p>}
+            </div>
           </div>
         </div>
       </div>
+      <style>{`
+        @keyframes pulse {
+          0% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.8; transform: scale(0.98); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
     </div>
   );
 }

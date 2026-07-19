@@ -3,33 +3,26 @@ import { CATEGORY_COLORS } from '../store';
 
 
 export default function IssuesTracker({ inventory, setInventory, budgets, setBudgets, issues, setIssues, role }) {
-  const [selectedBudgetId, setSelectedBudgetId] = useState(() => {
-    // Only auto-select non-completed/non-cancelled budgets
-    const activeIds = Object.keys(budgets).filter(id => 
-      !['Completed', 'Cancelled', 'Completed (Surplus Returned)'].includes(budgets[id].status)
-    );
-    return activeIds[0] || "";
-  });
+const [selectedBudgetId, setSelectedBudgetId] = useState("");
   const [currentDay, setCurrentDay] = useState("Day 1");
   const [draftIssues, setDraftIssues] = useState({}); // Local edits for the currentDay
   const [lastSaved, setLastSaved] = useState(null);
-  
+
   const activeBudget = budgets[selectedBudgetId] || null;
   const isConcluded = activeBudget?.status === "Completed" || activeBudget?.status === "Cancelled" || activeBudget?.status?.includes("Returned");
-  
-  const numDays = activeBudget ? (activeBudget.days || 7) : 7;
+
+  const numDays = activeBudget ? (activeBudget.days || 7) : 1;
   const DAYS = Array.from({length: numDays}, (_, i) => `Day ${i+1}`);
 
-  // Auto-detect current day and load existing issues into draft
+  // Auto-detect current day on budget change
   React.useEffect(() => {
     if (!activeBudget) return;
 
-    // 1. Auto-set current day if not already set (only on budget change)
     const today = new Date();
     today.setHours(0,0,0,0);
     const start = new Date(activeBudget.startDate);
     start.setHours(0,0,0,0);
-    
+
     if (!isNaN(start.getTime())) {
       const diffDays = Math.floor((today - start) / (1000 * 60 * 60 * 24)) + 1;
       if (diffDays >= 1 && diffDays <= numDays) {
@@ -39,7 +32,10 @@ export default function IssuesTracker({ inventory, setInventory, budgets, setBud
   }, [selectedBudgetId, activeBudget, numDays]);
 
   React.useEffect(() => {
-    if (!selectedBudgetId) return;
+    if (!selectedBudgetId) {
+      setDraftIssues({});
+      return;
+    }
     // Load existing issues for the current day into draft
     const budgetIssues = issues[selectedBudgetId] || {};
     const newDraft = {};
@@ -113,14 +109,31 @@ export default function IssuesTracker({ inventory, setInventory, budgets, setBud
   };
 
   const handleConcludeEvent = () => {
-    if (window.confirm("Are you sure you want to CONCLUDE this event? \n\nThis will freeze daily inputs, mark the budget as 'Completed', and move it to history. You can then process any surplus returns to inventory.")) {
-      setBudgets({
-        ...budgets,
-        [selectedBudgetId]: { ...activeBudget, status: "Completed" }
+    if (!selectedBudgetId) return;
+    
+    if (window.confirm("Are you sure you want to CONCLUDE this event? \n\nThis will freeze daily inputs, mark the budget as 'Completed', and move it to history. \n\nNOTE: All other 'Draft' budgets with past dates will also be moved to history to keep your active list clean.")) {
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      
+      const newBudgets = { ...budgets };
+      
+      // 1. Mark current budget as Completed
+      newBudgets[selectedBudgetId] = { ...activeBudget, status: "Completed" };
+      
+      // 2. Bulk Cleanup: Move other old Drafts to Archived
+      Object.keys(newBudgets).forEach(id => {
+        if (id === selectedBudgetId) return;
+        const b = newBudgets[id];
+        if (b.status === "Draft" || !b.status) {
+          const end = new Date(b.endDate);
+          if (!isNaN(end.getTime()) && end < today) {
+            newBudgets[id] = { ...b, status: "Archived" };
+          }
+        }
       });
-      if (role === 'chef') {
-        setSelectedBudgetId(""); // Clear tracker for chef
-      }
+
+      setBudgets(newBudgets);
+      setSelectedBudgetId(""); // Clear tracker for both roles to ensure blank UI
     }
   };
 
@@ -157,6 +170,7 @@ export default function IssuesTracker({ inventory, setInventory, budgets, setBud
         [selectedBudgetId]: { ...activeBudget, status: "Completed (Surplus Returned)" }
       });
       alert(`Success! ${itemsUpdated} items returned to stock and recorded.`);
+      setSelectedBudgetId(""); // Clear UI after return
     }
   };
 
@@ -206,24 +220,26 @@ export default function IssuesTracker({ inventory, setInventory, budgets, setBud
             <select className="input-field" value={selectedBudgetId} onChange={e => { setSelectedBudgetId(e.target.value); setCurrentDay("Day 1"); }}>
               <option value="">{role === 'chef' ? "-- Select Active Budget --" : "-- Select Budget Record --"}</option>
               {Object.values(budgets)
-                .filter(b => role === 'chef' ? !['Completed', 'Cancelled', 'Completed (Surplus Returned)'].includes(b.status) : true)
+                .filter(b => !['Completed', 'Cancelled', 'Archived', 'Completed (Surplus Returned)'].includes(b.status))
                 .map(b => (
                   <option key={b.id} value={b.id}>
-                    [{b.status || 'Active'}] {b.orgName || b.name}
+                    [{b.status || 'Draft'}] {b.orgName || b.name}
                   </option>
                 ))}
             </select>
           </div>
-          <div style={{ flex: 1 }}>
-            <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.5rem", color: "var(--text-secondary)" }}>Input Day</label>
-            <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-              {DAYS.map(d => (
-                <button key={d} className={`btn ${currentDay === d ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: "0.4rem 0.75rem", fontSize: "0.75rem" }} onClick={() => setCurrentDay(d)}>
-                  {d}
-                </button>
-              ))}
+          {activeBudget && (
+            <div style={{ flex: 1 }}>
+              <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.5rem", color: "var(--text-secondary)" }}>Input Day</label>
+              <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+                {DAYS.map(d => (
+                  <button key={d} className={`btn ${currentDay === d ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: "0.4rem 0.75rem", fontSize: "0.75rem" }} onClick={() => setCurrentDay(d)}>
+                    {d}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {activeBudget && (
@@ -235,7 +251,7 @@ export default function IssuesTracker({ inventory, setInventory, budgets, setBud
             </div>
             <div>
               <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", fontWeight: 600, textTransform: "uppercase" }}>Event Details</p>
-              <p style={{ fontWeight: 700 }}>{activeBudget.pax} PAX · {activeBudget.days} Days</p>
+              <p style={{ fontWeight: 700 }}>{(Number(activeBudget.pax) || 0) + (activeBudget.subGroups || []).reduce((acc, sg) => acc + (sg.pax || 0), 0)} PAX · {activeBudget.days} Days</p>
               <p style={{ fontSize: "0.875rem", color: "var(--primary-color)", fontWeight: 600 }}>Status: {activeBudget.status || "Active"}</p>
             </div>
             <div>
@@ -246,6 +262,16 @@ export default function IssuesTracker({ inventory, setInventory, budgets, setBud
           </div>
         )}
       </div>
+
+      {!activeBudget && (
+        <div className="fade-in card" style={{ textAlign: "center", padding: "5rem", background: "rgba(241, 245, 249, 0.5)", border: "2px dashed #E2E8F0" }}>
+           <div style={{ maxWidth: "400px", margin: "0 auto" }}>
+              <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>📝</div>
+              <h3 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-primary)", marginBottom: "0.5rem" }}>No Budget Selected</h3>
+              <p style={{ color: "var(--text-secondary)", lineHeight: 1.6 }}>Please select an active budget from the dropdown above to start tracking daily consumption.</p>
+           </div>
+        </div>
+      )}
 
       {activeBudget && (
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>

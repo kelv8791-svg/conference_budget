@@ -5,9 +5,9 @@ import {
   Wifi, WifiOff, RefreshCw, History
 } from 'lucide-react';
 
-export default function Sidebar({ 
+export default function Sidebar({
   role, active, onNav, onLogout, isCollapsed, onToggleCollapse,
-  isOnline, syncing, errorMsg 
+  isOnline, syncing, errorMsg, lowStockCount, onRefresh
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -15,6 +15,7 @@ export default function Sidebar({
     switch(role) {
       case "chef": return [
         { id: "summary", icon: LayoutDashboard, label: "Executive Dashboard" },
+        { id: "inventory", icon: PackageSearch, label: "Master Inventory" },
         { id: "budget", icon: FileText, label: "Budget Builder" },
         { id: "issues", icon: ClipboardList, label: "Consumption Track" },
         { id: "past_budgets", icon: History, label: "Past Budgets" }
@@ -71,116 +72,140 @@ export default function Sidebar({
         }} 
         className={`sidebar no-print ${isOpen ? 'mobile-open' : ''} ${isCollapsed ? 'collapsed' : ''}`}
       >
-      
-      {/* Collapse Toggle Button (Desktop Only) */}
-      <button 
-        onClick={onToggleCollapse}
-        className="no-mobile"
-        style={{
-          position: "absolute", right: -12, top: 32, width: 24, height: 24,
-          background: "white", border: "1px solid var(--border-light)",
-          borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: "pointer", boxShadow: "var(--shadow-sm)", zIndex: 10,
-          color: "var(--text-secondary)"
-        }}
-      >
-        {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-      </button>
-
-      <div style={{ padding: isCollapsed ? "1rem" : "1.5rem", borderBottom: "1px solid var(--border-light)", textAlign: "center", minHeight: 80, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        {isCollapsed ? (
-          <div style={{ fontWeight: 900, fontSize: "1.25rem", color: "var(--primary-color)" }}>E</div>
-        ) : (
-          <img src="/logo.jpg" alt="Logo" style={{ width: "100%", height: "auto", maxHeight: "50px", objectFit: "contain" }} />
-        )}
-      </div>
-      
-      <div style={{ padding: isCollapsed ? "1rem 0.5rem" : "1.25rem" }}>
-        {!isCollapsed && (
-          <p className="menu-header" style={{ fontSize: "0.65rem", textTransform: "uppercase", fontWeight: 800, color: "var(--text-secondary)", letterSpacing: "0.05em", marginBottom: "0.75rem", paddingLeft: "0.5rem" }}>Main Menu</p>
-        )}
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-          {navItems.map(item => {
-            const Icon = item.icon;
-            const isActive = active === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => {
-                  onNav(item.id);
-                  setIsOpen(false);
-                }}
-                title={isCollapsed ? item.label : ""}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: isCollapsed ? "center" : "flex-start", 
-                  gap: isCollapsed ? "0" : "0.75rem", width: "100%", 
-                  padding: isCollapsed ? "0.75rem" : "0.65rem 1rem", 
-                  borderRadius: "0.5rem", border: "none", cursor: "pointer",
-                  background: isActive ? "var(--primary-color)" : "transparent",
-                  color: isActive ? "white" : "var(--text-secondary)",
-                  fontWeight: isActive ? 600 : 500,
-                  transition: "all 0.2s"
-                }}
-                onMouseEnter={(e) => { if(!isActive) { e.currentTarget.style.background = "#F1F5F9"; e.currentTarget.style.color = "var(--text-primary)" } }}
-                onMouseLeave={(e) => { if(!isActive) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-secondary)" } }}
-              >
-                <Icon size={isCollapsed ? 20 : 18} />
-                {!isCollapsed && <span className="sidebar-label" style={{ fontSize: "0.875rem" }}>{item.label}</span>}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      
-      <div style={{ marginTop: "auto", padding: isCollapsed ? "1rem 0.5rem" : "1.25rem", borderTop: "1px solid var(--border-light)", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        {/* Cloud Status */}
-        <div 
-          onClick={() => errorMsg && alert(`Connection Details: \n${errorMsg}`)}
-          style={{ 
-            display: "flex", alignItems: "center", justifyContent: isCollapsed ? "center" : "flex-start", 
-            gap: "0.75rem", padding: isCollapsed ? "0" : "0.5rem 0.75rem", 
-            borderRadius: "0.5rem", background: isOnline ? "var(--success-light)" : "var(--danger-light)",
-            cursor: errorMsg ? "help" : "default"
-          }}
-        >
-          {isOnline ? (
-            <Wifi size={16} color="var(--success-color)" />
-          ) : (
-            <WifiOff size={16} color="var(--danger-color)" />
-          )}
-          
-          {!isCollapsed && (
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ 
-                fontSize: "0.7rem", fontWeight: 800, 
-                color: isOnline ? "var(--success-color)" : "var(--danger-color)",
-                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"
-              }}>
-                {syncing ? "Syncing..." : (isOnline ? "Cloud Connected" : "Offline")}
-              </p>
-            </div>
-          )}
-          
-          {syncing && <RefreshCw size={12} className="spin" style={{ animation: "spin 2s linear infinite", color: "var(--success-color)" }} />}
-        </div>
-
-        <button
-          onClick={onLogout}
-          title={isCollapsed ? "Switch Role" : ""}
+        
+        {/* Collapse Toggle Button (Desktop Only) */}
+        <button 
+          onClick={onToggleCollapse}
+          className="no-mobile"
           style={{
-            display: "flex", alignItems: "center", justifyContent: isCollapsed ? "center" : "flex-start",
-            gap: isCollapsed ? "0" : "0.75rem", width: "100%", 
-            padding: isCollapsed ? "0.75rem" : "0.65rem 1rem",
-            borderRadius: "0.5rem", border: "none", cursor: "pointer",
-            background: "#F1F5F9", color: "var(--text-secondary)", fontWeight: 600, transition: "all 0.2s"
+            position: "absolute", right: -12, top: 32, width: 24, height: 24,
+            background: "white", border: "1px solid var(--border-light)",
+            borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", boxShadow: "var(--shadow-sm)", zIndex: 10,
+            color: "var(--text-secondary)"
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--danger-light)"; e.currentTarget.style.color = "var(--danger-color)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = "#F1F5F9"; e.currentTarget.style.color = "var(--text-secondary)"; }}
         >
-          <LogOut size={isCollapsed ? 20 : 18} />
-          {!isCollapsed && <span className="sidebar-label" style={{ fontSize: "0.875rem" }}>Switch Role</span>}
+          {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
-      </div>
+
+        <div style={{ padding: isCollapsed ? "1rem" : "1.5rem", borderBottom: "1px solid var(--border-light)", textAlign: "center", minHeight: 80, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {isCollapsed ? (
+            <div style={{ fontWeight: 900, fontSize: "1.25rem", color: "var(--primary-color)" }}>E</div>
+          ) : (
+            <img src="/logo.jpg" alt="Logo" style={{ width: "100%", height: "auto", maxHeight: "50px", objectFit: "contain" }} />
+          )}
+        </div>
+        
+        <div style={{ padding: isCollapsed ? "1rem 0.5rem" : "1.25rem" }}>
+          {!isCollapsed && (
+            <p className="menu-header" style={{ fontSize: "0.65rem", textTransform: "uppercase", fontWeight: 800, color: "var(--text-secondary)", letterSpacing: "0.05em", marginBottom: "0.75rem", paddingLeft: "0.5rem" }}>Main Menu</p>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+            {navItems.map(item => {
+              const Icon = item.icon;
+              const isActive = active === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    onNav(item.id);
+                    setIsOpen(false);
+                  }}
+                  title={isCollapsed ? item.label : ""}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: isCollapsed ? "center" : "flex-start", 
+                    gap: isCollapsed ? "0" : "0.75rem", width: "100%", 
+                    padding: isCollapsed ? "0.75rem" : "0.65rem 1rem", 
+                    borderRadius: "0.5rem", border: "none", cursor: "pointer",
+                    background: isActive ? "var(--primary-color)" : "transparent",
+                    color: isActive ? "white" : "var(--text-secondary)",
+                    fontWeight: isActive ? 600 : 500,
+                    transition: "all 0.2s",
+                    position: "relative"
+                  }}
+                  onMouseEnter={(e) => { if(!isActive) { e.currentTarget.style.background = "#F1F5F9"; e.currentTarget.style.color = "var(--text-primary)" } }}
+                  onMouseLeave={(e) => { if(!isActive) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-secondary)" } }}
+                >
+                  <Icon size={isCollapsed ? 20 : 18} />
+                  {!isCollapsed && <span className="sidebar-label" style={{ fontSize: "0.875rem", flex: 1 }}>{item.label}</span>}
+                  {item.id === "inventory" && lowStockCount > 0 && (
+                    <span style={{ 
+                      background: "var(--danger-color)", color: "white", 
+                      borderRadius: "50%", minWidth: "18px", height: "18px", 
+                      display: "flex", alignItems: "center", justifyContent: "center", 
+                      fontSize: "0.65rem", fontWeight: 700, padding: "0 4px"
+                    }}>
+                      {lowStockCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        
+        <div style={{ marginTop: "auto", padding: isCollapsed ? "1rem 0.5rem" : "1.25rem", borderTop: "1px solid var(--border-light)", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          {/* Cloud Status */}
+          <div 
+            onClick={() => errorMsg && alert(`Connection Details: \n${errorMsg}`)}
+            style={{ 
+              display: "flex", alignItems: "center", justifyContent: isCollapsed ? "center" : "flex-start", 
+              gap: "0.75rem", padding: isCollapsed ? "0" : "0.5rem 0.75rem", 
+              borderRadius: "0.5rem", background: isOnline ? "var(--success-light)" : "var(--danger-light)",
+              cursor: errorMsg ? "help" : "default"
+            }}
+          >
+            {isOnline ? (
+              <Wifi size={16} color="var(--success-color)" />
+            ) : (
+              <WifiOff size={16} color="var(--danger-color)" />
+            )}
+            
+            {!isCollapsed && (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ 
+                  fontSize: "0.7rem", fontWeight: 800, 
+                  color: isOnline ? "var(--success-color)" : "var(--danger-color)",
+                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"
+                }}>
+                  {syncing ? "Syncing..." : (isOnline ? "Cloud Connected" : "Offline")}
+                </p>
+              </div>
+            )}
+            
+            {!isCollapsed && !syncing && (
+              <button
+                onClick={onRefresh}
+                title="Refresh Data"
+                style={{
+                  background: "none", border: "none", padding: "0.25rem",
+                  cursor: "pointer", color: "var(--text-secondary)", opacity: 0.7, marginLeft: "auto"
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.color = "var(--primary-color)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.7"; e.currentTarget.style.color = "var(--text-secondary)"; }}
+              >
+                <RefreshCw size={14} />
+              </button>
+            )}
+          </div>
+
+          <button
+            onClick={onLogout}
+            title={isCollapsed ? "Switch Role" : ""}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: isCollapsed ? "center" : "flex-start",
+              gap: isCollapsed ? "0" : "0.75rem", width: "100%", 
+              padding: isCollapsed ? "0.75rem" : "0.65rem 1rem",
+              borderRadius: "0.5rem", border: "none", cursor: "pointer",
+              background: "#F1F5F9", color: "var(--text-secondary)", fontWeight: 600, transition: "all 0.2s"
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--danger-light)"; e.currentTarget.style.color = "var(--danger-color)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "#F1F5F9"; e.currentTarget.style.color = "var(--text-secondary)"; }}
+          >
+            <LogOut size={isCollapsed ? 20 : 18} />
+            {!isCollapsed && <span className="sidebar-label" style={{ fontSize: "0.875rem" }}>Switch Role</span>}
+          </button>
+        </div>
       </div>
     </>
   );

@@ -32,44 +32,74 @@ export const generateBudgetPDF = async (budget, options = {}) => {
     }
 
     // 1. Header & Branding (Centered)
-    let currentY = 15;
+    let currentY = 10;
     if (logoData) {
-      const logoWidth = 15;
+      const logoWidth = 12;
       const logoHeight = (logoData.height * logoWidth) / logoData.width;
       doc.addImage(logoData, 'JPEG', (pageWidth - logoWidth) / 2, currentY, logoWidth, logoHeight);
-      currentY += logoHeight + 8;
+      currentY += logoHeight + 4;
     }
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
+    doc.setFontSize(16);
     doc.setTextColor(0, 0, 0);
     doc.text("Epashikino Resort & Spa", pageWidth / 2, currentY, { align: "center" });
-    currentY += 10;
+    currentY += 6;
     
-    doc.setFontSize(14);
+    doc.setFontSize(11);
     doc.setTextColor(100, 100, 100);
     doc.text(`${budget.orgName || 'N/A'} Conference Budget`, pageWidth / 2, currentY, { align: "center" });
-    currentY += 15;
+    currentY += 8;
 
     // 2. Event Details (Arranged neatly)
-    doc.setFontSize(10);
+    doc.setFontSize(9);
     doc.setTextColor(0, 0, 0);
     doc.setFont("helvetica", "normal");
 
     const detailLeft = 14;
     const detailRight = 110;
 
-    const safeDates = budget.dates || budget.displayDates || 'N/A';
+    const safeDates = budget.displayDates || budget.dates || 'N/A';
 
-    doc.text(`Organization: ${budget.orgName || 'N/A'}`, detailLeft, currentY);
-    doc.text(`Estimated PAX: ${budget.pax || 0}`, detailRight, currentY);
+    // Normalize groups for display
+    let displayGroups = [];
+    if (budget.eventGroups) {
+      displayGroups = budget.eventGroups;
+    } else {
+      displayGroups = [{
+        name: budget.orgName,
+        pax: budget.pax,
+        startDate: budget.startDate,
+        endDate: budget.endDate,
+        rate: budget.conferenceRate
+      }];
+      if (budget.subGroups) {
+        displayGroups.push(...budget.subGroups.map(sg => ({
+          name: sg.orgName, pax: sg.pax, startDate: sg.startDate, endDate: sg.endDate, rate: sg.conferenceRate
+        })));
+      }
+    }
+
+    const totalPax = displayGroups.reduce((acc, g) => acc + (Number(g.pax) || 0), 0);
+
+    doc.text(`Organization(s): ${budget.orgName || 'N/A'}`, detailLeft, currentY);
+    doc.text(`Total Estimated PAX: ${totalPax}`, detailRight, currentY);
+    currentY += 4;
+    doc.text(`Overall Dates: ${safeDates}`, detailLeft, currentY);
+    doc.text(`Group Type: ${budget.groupType || 'Conference'}`, detailRight, currentY);
     currentY += 6;
-    doc.text(`Workshop Dates: ${safeDates}`, detailLeft, currentY);
-    doc.text(`Duration: ${budget.days || 1} Days`, detailRight, currentY);
-    currentY += 6;
-    doc.text(`Group Type: ${budget.groupType || 'Conference'}`, detailLeft, currentY);
-    doc.text(`Rate/PAX: KES ${Number(budget.conferenceRate || 0).toLocaleString()}`, detailRight, currentY);
-    currentY += 12;
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Group Details Breakdown:", detailLeft, currentY);
+    doc.setFont("helvetica", "normal");
+    currentY += 4;
+
+    displayGroups.forEach((g, idx) => {
+      const gDates = g.dates || (g.startDate && g.endDate ? `${g.startDate} to ${g.endDate}` : 'N/A');
+      doc.text(`${idx+1}. ${g.name || 'Group'}: ${g.pax} Pax | Rate: KES ${Number(g.rate || 0).toLocaleString()} | ${gDates}`, detailLeft + 2, currentY);
+      currentY += 4;
+    });
+    currentY += 3;
 
     // 3. Table Items Construction
     const tableColumn = ["Category", "Item Name", "Unit", "Base Price", "Qty", "Total (KES)"];
@@ -110,8 +140,8 @@ export const generateBudgetPDF = async (budget, options = {}) => {
       startY: currentY,
       theme: 'grid',
       styles: { 
-        fontSize: 8, 
-        cellPadding: 3, 
+        fontSize: 7, 
+        cellPadding: 1.5, 
         lineColor: [101, 67, 33], // Dark brown
         lineWidth: 0.1,
         textColor: [0, 0, 0] 
@@ -127,9 +157,17 @@ export const generateBudgetPDF = async (budget, options = {}) => {
     });
 
     // 5. Summary Totals (Bottom - where table ends)
-    const finalY = doc.lastAutoTable.finalY + 12;
+    let finalY = doc.lastAutoTable.finalY + 6;
+    const pageHeight = doc.internal.pageSize.getHeight();
+    
+    // Check if there's enough space for the summary totals block
+    if (finalY + 20 > pageHeight) {
+      doc.addPage();
+      finalY = 15;
+    }
+
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
+    doc.setFontSize(9);
     
     const summaryX = pageWidth - 105;
     const valueX = pageWidth - 14;
@@ -141,13 +179,13 @@ export const generateBudgetPDF = async (budget, options = {}) => {
     doc.text(`Total Workshop Revenue:`, summaryX, finalY);
     doc.text(`KES ${totalWorkshopAmount.toLocaleString(undefined, {minimumFractionDigits:2})}`, valueX, finalY, { align: 'right' });
     
-    doc.text(`Food Cost Allowance (25%):`, summaryX, finalY + 7);
-    doc.text(`KES ${targetFoodCost.toLocaleString(undefined, {minimumFractionDigits:2})}`, valueX, finalY + 7, { align: 'right' });
+    doc.text(`Food Cost Allowance (25%):`, summaryX, finalY + 5);
+    doc.text(`KES ${targetFoodCost.toLocaleString(undefined, {minimumFractionDigits:2})}`, valueX, finalY + 5, { align: 'right' });
     
     const currentPercentage = totalWorkshopAmount > 0 ? (currentCost / totalWorkshopAmount) * 100 : 0;
     if (currentCost > targetFoodCost) doc.setTextColor(200, 0, 0); 
-    doc.text(`Actual Estimated Cost (${currentPercentage.toFixed(1)}%):`, summaryX, finalY + 14);
-    doc.text(`KES ${currentCost.toLocaleString(undefined, {minimumFractionDigits:2})}`, valueX, finalY + 14, { align: 'right' });
+    doc.text(`Actual Estimated Cost (${currentPercentage.toFixed(1)}%):`, summaryX, finalY + 10);
+    doc.text(`KES ${currentCost.toLocaleString(undefined, {minimumFractionDigits:2})}`, valueX, finalY + 10, { align: 'right' });
 
     const safeFileName = (budget.orgName || budget.groupType || 'Budget').replace(/[^a-z0-9]/gi, '_');
     const filename = `Budget_${safeFileName}.pdf`;

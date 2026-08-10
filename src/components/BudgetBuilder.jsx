@@ -205,15 +205,15 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
 
     const targetId = editingBudgetId || Date.now().toString();
 
-    setBudgets({ 
-      ...budgets, 
+    setBudgets(prevBudgets => ({ 
+      ...(prevBudgets || {}), 
       [targetId]: { 
         id: targetId, orgName, groupType, name: budgetName, 
         eventGroups, // Save the new groups array
         totalWorkshopAmount, targetFoodCost, totalCost: currentCost, items: itemsToSave, date: new Date().toISOString(),
-        status: budgets[targetId]?.status || "Draft"
+        status: (prevBudgets && prevBudgets[targetId]?.status) || budgets[targetId]?.status || "Draft"
       } 
-    });
+    }));
     alert(`Budget ${editingBudgetId ? 'Updated' : 'Saved'} Successfully!`);
     if (!editingBudgetId) setEditingBudgetId(targetId);
   };
@@ -276,7 +276,11 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
                 value={budgets[editingBudgetId]?.status || "Draft"}
                 disabled={isCompleted}
                 onChange={(e) => {
-                  setBudgets({...budgets, [editingBudgetId]: {...budgets[editingBudgetId], status: e.target.value}});
+                  const newStatus = e.target.value;
+                  setBudgets(prev => ({
+                    ...prev,
+                    [editingBudgetId]: { ...prev[editingBudgetId], status: newStatus }
+                  }));
                 }}
               >
                 <option value="Draft">Draft</option>

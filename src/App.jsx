@@ -6,12 +6,23 @@ import IssuesTracker from "./components/IssuesTracker";
 import PinGate from "./components/PinGate";
 import PastBudgets from "./components/PastBudgets";
 import { supabase } from "./supabaseClient";
-import { DEFAULT_INVENTORY } from "./store";
+import { DEFAULT_INVENTORY, cleanAndMergeInventory } from "./store";
 import { ChefHat, Store, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 
 const DATA_ROW_ID = '00000000-0000-0000-0000-000000000001';
 
-
+function safeParseJSON(val, fallback) {
+  if (val === null || val === undefined) return fallback;
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      return parsed !== null && parsed !== undefined ? parsed : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  return val;
+}
 
 const ROLES = [
   { key: "chef", label: "Head Chef", icon: ChefHat, color: "#D97706", desc: "Budget · Consumption · Requisitions" },
@@ -89,7 +100,6 @@ export default function App() {
 
   // Keep a ref to the latest state to avoid stale closures in sync logic
   const dataRef = React.useRef(appData);
-  // Also keep it in sync with initial load and realtime updates
   useEffect(() => { dataRef.current = appData; }, [appData]);
 
   // Sync with Supabase on mount
@@ -103,19 +113,20 @@ export default function App() {
           .single();
         
         if (data) {
-          // Deduplicate inventory by ID and fallback to defaults if empty
-          const rawInv = (data.inventory && data.inventory.length > 0) ? data.inventory : DEFAULT_INVENTORY;
-          const cleanInv = Array.from(new Map(rawInv.map(item => [item.id, item])).values());
+          const rawInv = safeParseJSON(data.inventory, DEFAULT_INVENTORY);
+          const rawBudgets = safeParseJSON(data.budget, {});
+          const rawIssues = safeParseJSON(data.issues, {});
+
+          const cleanInv = cleanAndMergeInventory(rawInv);
           
           setAppData({
             inventory: cleanInv,
-            budgets: data.budget || {},
-            issues: data.issues || {},
-            lastCommit: data.updated_at // Using updated_at as initial commit ref
+            budgets: typeof rawBudgets === 'object' && !Array.isArray(rawBudgets) ? rawBudgets : {},
+            issues: typeof rawIssues === 'object' && !Array.isArray(rawIssues) ? rawIssues : {},
+            lastCommit: data.updated_at
           });
           setIsOnline(true);
         } else {
-          // No row found, seeding with defaults
           setAppData({
             inventory: DEFAULT_INVENTORY,
             budgets: {},
@@ -133,7 +144,7 @@ export default function App() {
 
     fetchData();
 
-// Subscribe to real-time changes
+    // Subscribe to real-time changes
     const channel = supabase
       .channel('conference-sync')
       .on('postgres_changes', {
@@ -144,15 +155,16 @@ export default function App() {
       },
         (payload) => {
           if (payload.new && payload.new.updated_at !== dataRef.current.lastCommit) {
-            // Deduplicate inventory by ID, merge with existing if incoming is incomplete
-            const incomingInv = payload.new.inventory || [];
-            const cleanInv = Array.from(new Map(incomingInv.map(item => [item.id, item])).values());
-            const finalInv = cleanInv.length > 0 ? cleanInv : dataRef.current.inventory;
+            const incomingInv = safeParseJSON(payload.new.inventory, dataRef.current.inventory);
+            const incomingBudgets = safeParseJSON(payload.new.budget, dataRef.current.budgets);
+            const incomingIssues = safeParseJSON(payload.new.issues, dataRef.current.issues);
+
+            const cleanInv = cleanAndMergeInventory(incomingInv);
 
             setAppData({
-              inventory: finalInv,
-              budgets: payload.new.budget || dataRef.current.budgets,
-              issues: payload.new.issues || dataRef.current.issues,
+              inventory: cleanInv,
+              budgets: typeof incomingBudgets === 'object' && !Array.isArray(incomingBudgets) ? incomingBudgets : dataRef.current.budgets,
+              issues: typeof incomingIssues === 'object' && !Array.isArray(incomingIssues) ? incomingIssues : dataRef.current.issues,
               lastCommit: payload.new.updated_at
             });
             setIsOnline(true);
@@ -166,24 +178,38 @@ export default function App() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-// Helper to push all state to Supabase - Refactored for better React compliance
+  // Helper to push all state to Supabase - Supports functional updates & atomic merging
   const persist = async (updates) => {
     setSyncing(true);
 
-    // 1. Compute latest data from existing state + updates
-    const latestData = { ...dataRef.current, ...updates };
+    const nowIso = new Date().toISOString();
 
-    // 2. Ensure inventory is never empty and always deduplicated
-    const cleanInv = Array.from(new Map((latestData.inventory || []).map(item => [item.id, item])).values());
-    const finalData = { ...latestData, inventory: cleanInv.length > 0 ? cleanInv : DEFAULT_INVENTORY };
+    const nextBudgets = typeof updates.budgets === 'function' 
+      ? updates.budgets(dataRef.current.budgets) 
+      : (updates.budgets ?? dataRef.current.budgets);
 
-    // 3. Update BOTH the ref and the state
-    // Updating the ref synchronously ensures next call to persist() gets the right base
+    const nextInventory = typeof updates.inventory === 'function' 
+      ? updates.inventory(dataRef.current.inventory) 
+      : (updates.inventory ?? dataRef.current.inventory);
+
+    const nextIssues = typeof updates.issues === 'function' 
+      ? updates.issues(dataRef.current.issues) 
+      : (updates.issues ?? dataRef.current.issues);
+
+    const cleanInv = cleanAndMergeInventory(nextInventory);
+
+    const finalData = {
+      inventory: cleanInv,
+      budgets: typeof nextBudgets === 'object' && !Array.isArray(nextBudgets) ? nextBudgets : {},
+      issues: typeof nextIssues === 'object' && !Array.isArray(nextIssues) ? nextIssues : {},
+      lastCommit: nowIso
+    };
+
+    // Update ref immediately to prevent race conditions and ignore self-echoes
     dataRef.current = finalData;
     setAppData(finalData);
-    
-    // 3. Perform the async Supabase call
-try {
+
+    try {
       const { data, error } = await supabase
         .from('conference_data')
         .upsert({
@@ -191,7 +217,7 @@ try {
           inventory: finalData.inventory,
           budget: finalData.budgets,
           issues: finalData.issues,
-          updated_at: new Date().toISOString()
+          updated_at: nowIso
         })
         .select('updated_at')
         .single();
@@ -201,8 +227,9 @@ try {
         setErrorMsg(error.message || "Failed to save changes.");
         setIsOnline(false);
       } else {
-        // Update local lastCommit with the server-generated timestamp
-        setAppData(prev => ({ ...prev, lastCommit: data.updated_at }));
+        const commitTime = data?.updated_at || nowIso;
+        dataRef.current.lastCommit = commitTime;
+        setAppData(prev => ({ ...prev, lastCommit: commitTime }));
         setIsOnline(true);
         setErrorMsg(null);
       }
@@ -228,13 +255,15 @@ try {
         .single();
 
       if (data) {
-        const rawInv = (data.inventory && data.inventory.length > 0) ? data.inventory : DEFAULT_INVENTORY;
-        const cleanInv = Array.from(new Map(rawInv.map(item => [item.id, item])).values());
+        const rawInv = safeParseJSON(data.inventory, DEFAULT_INVENTORY);
+        const rawBudgets = safeParseJSON(data.budget, {});
+        const rawIssues = safeParseJSON(data.issues, {});
+        const cleanInv = cleanAndMergeInventory(rawInv);
 
         setAppData({
           inventory: cleanInv,
-          budgets: data.budget || {},
-          issues: data.issues || {},
+          budgets: typeof rawBudgets === 'object' && !Array.isArray(rawBudgets) ? rawBudgets : {},
+          issues: typeof rawIssues === 'object' && !Array.isArray(rawIssues) ? rawIssues : {},
           lastCommit: data.updated_at
         });
         setIsOnline(true);

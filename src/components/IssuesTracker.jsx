@@ -66,34 +66,24 @@ const [selectedBudgetId, setSelectedBudgetId] = useState("");
   const handleSaveDay = () => {
     if (!selectedBudgetId) return;
     
-    const newIssues = { ...issues };
-    const oldBudgetIssues = issues[selectedBudgetId] || {};
-    let newInventory = [...inventory];
+    const oldBudgetIssues = (issues[selectedBudgetId]) || {};
     let shortages = [];
     
-    if (!newIssues[selectedBudgetId]) newIssues[selectedBudgetId] = {};
-    
-    // 1. Calculate and apply stock diffs
+    // Check shortages against current inventory
     Object.keys(draftIssues).forEach(itemId => {
       const oldVal = (oldBudgetIssues[itemId] && oldBudgetIssues[itemId][currentDay]) || 0;
       const newVal = draftIssues[itemId] || 0;
       const diff = newVal - oldVal;
 
       if (diff !== 0) {
-        newInventory = newInventory.map(invItem => {
-          if (invItem.id === itemId) {
-            const potentialStock = (invItem.stock || 0) - diff;
-            if (potentialStock < 0) {
-              shortages.push(`${invItem.name} (Shortage: ${Math.abs(potentialStock)} ${invItem.unit})`);
-            }
-            return { ...invItem, stock: potentialStock };
+        const invItem = inventory.find(i => i.id === itemId);
+        if (invItem) {
+          const potentialStock = (invItem.stock || 0) - diff;
+          if (potentialStock < 0) {
+            shortages.push(`${invItem.name} (Shortage: ${Math.abs(potentialStock)} ${invItem.unit})`);
           }
-          return invItem;
-        });
+        }
       }
-      
-      if (!newIssues[selectedBudgetId][itemId]) newIssues[selectedBudgetId][itemId] = {};
-      newIssues[selectedBudgetId][itemId][currentDay] = newVal;
     });
 
     if (shortages.length > 0) {
@@ -102,60 +92,79 @@ const [selectedBudgetId, setSelectedBudgetId] = useState("");
       }
     }
 
-    setInventory(newInventory);
-    setIssues(newIssues);
+    setInventory(prevInv => {
+      let updated = [...(prevInv || [])];
+      Object.keys(draftIssues).forEach(itemId => {
+        const oldVal = (oldBudgetIssues[itemId] && oldBudgetIssues[itemId][currentDay]) || 0;
+        const newVal = draftIssues[itemId] || 0;
+        const diff = newVal - oldVal;
+
+        if (diff !== 0) {
+          updated = updated.map(invItem => {
+            if (invItem.id === itemId) {
+              return { ...invItem, stock: (invItem.stock || 0) - diff };
+            }
+            return invItem;
+          });
+        }
+      });
+      return updated;
+    });
+
+    setIssues(prevIssues => {
+      const next = { ...(prevIssues || {}) };
+      if (!next[selectedBudgetId]) next[selectedBudgetId] = {};
+      Object.keys(draftIssues).forEach(itemId => {
+        if (!next[selectedBudgetId][itemId]) next[selectedBudgetId][itemId] = {};
+        next[selectedBudgetId][itemId][currentDay] = draftIssues[itemId] || 0;
+      });
+      return next;
+    });
+
     setLastSaved(new Date().toLocaleTimeString());
-    // alert(`${currentDay} consumption saved successfully and store inventory has been updated.`);
   };
 
   const handleConcludeEvent = () => {
     if (!selectedBudgetId) return;
     
     if (window.confirm("Are you sure you want to CONCLUDE this event? \n\nThis will freeze daily inputs, mark the budget as 'Completed', and move it to history. \n\nNOTE: All other 'Draft' budgets with past dates will also be moved to history to keep your active list clean.")) {
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      
-      const newBudgets = { ...budgets };
-      
-      // 1. Mark current budget as Completed
-      newBudgets[selectedBudgetId] = { ...activeBudget, status: "Completed" };
-      
-      // 2. Bulk Cleanup: Move other old Drafts to Archived
-      Object.keys(newBudgets).forEach(id => {
-        if (id === selectedBudgetId) return;
-        const b = newBudgets[id];
-        if (b.status === "Draft" || !b.status) {
-          const end = new Date(b.endDate);
-          if (!isNaN(end.getTime()) && end < today) {
-            newBudgets[id] = { ...b, status: "Archived" };
-          }
+      setBudgets(prevBudgets => {
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        const next = { ...(prevBudgets || {}) };
+        
+        if (next[selectedBudgetId]) {
+          next[selectedBudgetId] = { ...next[selectedBudgetId], status: "Completed" };
         }
-      });
+        
+        Object.keys(next).forEach(id => {
+          if (id === selectedBudgetId) return;
+          const b = next[id];
+          if (b.status === "Draft" || !b.status) {
+            const end = new Date(b.endDate);
+            if (!isNaN(end.getTime()) && end < today) {
+              next[id] = { ...b, status: "Archived" };
+            }
+          }
+        });
 
-      setBudgets(newBudgets);
+        return next;
+      });
       setSelectedBudgetId(""); // Clear tracker for both roles to ensure blank UI
     }
   };
 
   const handleProcessReturns = () => {
-    // Collect all surplus items and prepare inventory updates
     const returns = [];
-    let newInventory = [...inventory];
     let itemsUpdated = 0;
 
-    activeBudget.items.forEach(item => {
+    (activeBudget?.items || []).forEach(item => {
       const itemIssues = (issues[selectedBudgetId] || {})[item.id] || {};
       const usedTotal = Object.values(itemIssues).reduce((a,b) => a + b, 0);
       const surplus = item.budgetQty - usedTotal;
       
       if (surplus > 0) {
         returns.push({ name: item.name, qty: surplus, unit: item.unit });
-        // Update inventory stock
-        newInventory = newInventory.map(invItem => 
-          invItem.id === item.id 
-            ? { ...invItem, stock: (invItem.stock || 0) + surplus }
-            : invItem
-        );
         itemsUpdated++;
       }
     });
@@ -164,11 +173,28 @@ const [selectedBudgetId, setSelectedBudgetId] = useState("");
 
     const returnMsg = returns.map(r => `• ${r.name}: ${r.qty} ${r.unit}`).join('\n');
     if (window.confirm(`Confirm returning these items to the Master Store? This will increment stock levels. \n\n${returnMsg}`)) {
-      setInventory(newInventory);
-      setBudgets({
-        ...budgets,
-        [selectedBudgetId]: { ...activeBudget, status: "Completed (Surplus Returned)" }
+      setInventory(prev => {
+        let updated = [...(prev || [])];
+        (activeBudget?.items || []).forEach(item => {
+          const itemIssues = (issues[selectedBudgetId] || {})[item.id] || {};
+          const usedTotal = Object.values(itemIssues).reduce((a,b) => a + b, 0);
+          const surplus = item.budgetQty - usedTotal;
+          if (surplus > 0) {
+            updated = updated.map(invItem => 
+              invItem.id === item.id 
+                ? { ...invItem, stock: (invItem.stock || 0) + surplus }
+                : invItem
+            );
+          }
+        });
+        return updated;
       });
+
+      setBudgets(prev => ({
+        ...(prev || {}),
+        [selectedBudgetId]: { ...(prev[selectedBudgetId] || activeBudget), status: "Completed (Surplus Returned)" }
+      }));
+
       alert(`Success! ${itemsUpdated} items returned to stock and recorded.`);
       setSelectedBudgetId(""); // Clear UI after return
     }

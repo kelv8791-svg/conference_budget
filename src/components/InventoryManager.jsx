@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { CATEGORY_COLORS } from '../store';
-import { Plus, Edit2, Trash2, Save, X } from 'lucide-react';
+import { CATEGORY_COLORS, DEFAULT_INVENTORY } from '../store';
+import { Plus, Edit2, Trash2, Save, X, RotateCcw } from 'lucide-react';
 
 export default function InventoryManager({ inventory, setInventory, role }) {
   const [editingId, setEditingId] = useState(null);
@@ -125,11 +125,31 @@ export default function InventoryManager({ inventory, setInventory, role }) {
             <h2 style={{ fontSize: isStore ? "1.5rem" : "1.75rem", fontWeight: 800 }}>📦 Master Inventory</h2>
             <p style={{ color: "var(--text-secondary)", marginTop: "0.25rem", fontSize: isStore ? "0.8rem" : "1rem" }}>{isStore ? "Quick-access stock management for store operations." : "Search, filter, and manage your central stock database."}</p>
           </div>
-          {!isAdding && (
-            <button className="btn btn-primary" onClick={startAdding} style={{ padding: isStore ? "0.5rem 1rem" : "0.75rem 1.25rem", borderRadius: "0.75rem", fontSize: isStore ? "0.8rem" : "1rem" }}>
-              <Plus size={isStore ? 16 : 18} /> Add New Item
-            </button>
-          )}
+          <div style={{ display: "flex", gap: "0.75rem" }}>
+            {isStore && (
+              <>
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={() => {
+                    if(window.confirm("This will merge the standard master list with your current items. Continue?")) {
+                      // Merge by ID, keeping existing if conflict
+                      const existingIds = new Set(inventory.map(i => i.id));
+                      const newItems = DEFAULT_INVENTORY.filter(i => !existingIds.has(i.id));
+                      setInventory([...inventory, ...newItems]);
+                    }
+                  }} 
+                  style={{ padding: isStore ? "0.5rem 1rem" : "0.75rem 1.25rem", borderRadius: "0.75rem", fontSize: isStore ? "0.8rem" : "1rem", background: "white", color: "var(--primary-color)", border: "1px solid var(--primary-color)" }}
+                >
+                  🔄 Restore Master List
+                </button>
+                {!isAdding && (
+                  <button className="btn btn-primary" onClick={startAdding} style={{ padding: isStore ? "0.5rem 1rem" : "0.75rem 1.25rem", borderRadius: "0.75rem", fontSize: isStore ? "0.8rem" : "1rem" }}>
+                    <Plus size={isStore ? 16 : 18} /> Add New Item
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
         {/* Navigation & Search Area */}
@@ -189,7 +209,7 @@ export default function InventoryManager({ inventory, setInventory, role }) {
             border: "1px solid var(--primary-color)", 
             marginTop: "0.5rem",
             display: "grid",
-            gridTemplateColumns: "100px 180px 1fr 100px 100px 100px 110px",
+            gridTemplateColumns: "100px 180px 1fr 100px 120px 110px",
             gap: "0.5rem",
             alignItems: "end",
             boxShadow: "var(--shadow-lg)"
@@ -217,10 +237,6 @@ export default function InventoryManager({ inventory, setInventory, role }) {
               <label style={{ fontSize: "0.65rem", fontWeight: 800, color: "var(--primary-color)", textTransform: "uppercase", display: "block", marginBottom: "0.25rem" }}>Base Price</label>
               <input type="number" className="input-field" placeholder="Price" value={addForm.price} onChange={(e) => setAddForm({...addForm, price: Number(e.target.value)})} style={{ marginBottom: 0 }} />
             </div>
-            <div>
-              <label style={{ fontSize: "0.65rem", fontWeight: 800, color: "var(--primary-color)", textTransform: "uppercase", display: "block", marginBottom: "0.25rem" }}>Stock</label>
-              <input type="number" className="input-field" placeholder="Stock" value={addForm.stock} onChange={(e) => setAddForm({...addForm, stock: Number(e.target.value)})} style={{ marginBottom: 0 }} />
-            </div>
             <div style={{ display: "flex", gap: "0.5rem" }}>
               <button className="btn btn-success" onClick={handleSaveAdd} style={{ padding: "0.6rem 1rem", flex: 1 }}><Save size={16}/></button>
               <button className="btn btn-secondary" onClick={() => setIsAdding(false)} style={{ padding: "0.6rem 1rem", flex: 1 }}><X size={16}/></button>
@@ -239,8 +255,7 @@ export default function InventoryManager({ inventory, setInventory, role }) {
                 <th style={{ borderBottom: "2px solid var(--border-light)", padding: spacing }}>Item Name</th>
                 <th style={{ borderBottom: "2px solid var(--border-light)", padding: spacing }}>Unit</th>
                 <th style={{ borderBottom: "2px solid var(--border-light)", padding: spacing }}>Base Price</th>
-                <th style={{ borderBottom: "2px solid var(--border-light)", padding: spacing }}>Stock</th>
-                <th style={{ textAlign: "right", borderBottom: "2px solid var(--border-light)", padding: spacing }} className="no-print">Actions</th>
+                {isStore && <th style={{ textAlign: "right", borderBottom: "2px solid var(--border-light)", padding: spacing }} className="no-print">Actions</th>}
               </tr>
             </thead>
 
@@ -262,7 +277,7 @@ export default function InventoryManager({ inventory, setInventory, role }) {
                   <React.Fragment key={category}>
                     {activeTab === "ALL" && (
                       <tr style={{ background: "var(--bg-body)" }}>
-                        <td colSpan="6" style={{ padding: "0.75rem 1.5rem", background: "rgba(0,0,0,0.02)", borderBottom: "1px solid var(--border-light)" }}>
+                        <td colSpan="5" style={{ padding: "0.75rem 1.5rem", background: "rgba(0,0,0,0.02)", borderBottom: "1px solid var(--border-light)" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                             <div style={{ width: "12px", height: "12px", borderRadius: "3px", background: catConfig.color }} />
                             <span style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-secondary)" }}>
@@ -291,7 +306,6 @@ export default function InventoryManager({ inventory, setInventory, role }) {
                             <td><input className="input-field" value={editForm.name} onChange={(e) => setEditForm({...editForm, name: e.target.value})} /></td>
                             <td><input className="input-field" value={editForm.unit} onChange={(e) => setEditForm({...editForm, unit: e.target.value})} /></td>
                             <td><input type="number" className="input-field" value={editForm.price} onChange={(e) => setEditForm({...editForm, price: Number(e.target.value)})} /></td>
-                            <td><input type="number" className="input-field" value={editForm.stock} onChange={(e) => setEditForm({...editForm, stock: Number(e.target.value)})} /></td>
                             <td style={{ textAlign: "right" }}>
                               <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
                                 <button className="btn btn-success" onClick={handleSaveEdit}><Save size={16}/></button>
@@ -309,18 +323,14 @@ export default function InventoryManager({ inventory, setInventory, role }) {
                           <td style={{ fontWeight: 600, padding: spacing }}>{item.name}</td>
                           <td style={{ padding: spacing }}>{item.unit}</td>
                           <td style={{ fontWeight: 500, padding: spacing }}>KES {item.price.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-                          <td style={{ fontWeight: 700, color: item.stock <= 0 ? "#DC2626" : item.stock < 10 ? "#D97706" : "#059669", padding: spacing }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                              {item.stock <= 0 ? "❌ Out" : item.stock < 10 ? "⚠️ Low" : "✅ In"}
-                              <span>{item.stock} {item.unit}</span>
-                            </div>
-                          </td>
-                          <td style={{ textAlign: "right", padding: spacing }} className="no-print">
-                            <div style={{ display: "flex", gap: "0.35rem", justifyContent: "flex-end" }}>
-                              <button className="btn btn-secondary" style={{ padding: isStore ? "0.2rem 0.4rem" : "0.35rem 0.5rem" }} onClick={() => handleEditClick(item)}><Edit2 size={isStore ? 12 : 14}/></button>
-                              <button className="btn btn-danger" style={{ padding: isStore ? "0.2rem 0.4rem" : "0.35rem 0.5rem" }} onClick={() => handleDelete(item.id)}><Trash2 size={isStore ? 12 : 14}/></button>
-                            </div>
-                          </td>
+                          {isStore && (
+                            <td style={{ textAlign: "right", padding: spacing }} className="no-print">
+                              <div style={{ display: "flex", gap: "0.35rem", justifyContent: "flex-end" }}>
+                                <button className="btn btn-secondary" style={{ padding: isStore ? "0.2rem 0.4rem" : "0.35rem 0.5rem" }} onClick={() => handleEditClick(item)}><Edit2 size={isStore ? 12 : 14}/></button>
+                                <button className="btn btn-danger" style={{ padding: isStore ? "0.2rem 0.4rem" : "0.35rem 0.5rem" }} onClick={() => handleDelete(item.id)}><Trash2 size={isStore ? 12 : 14}/></button>
+                              </div>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}

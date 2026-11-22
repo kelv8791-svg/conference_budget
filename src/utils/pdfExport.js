@@ -1,5 +1,4 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { getBudgetDetails, migrateEventGroups } from './budgetUtils';
 
 /**
  * Shared PDF generation utility for conference budgets.
@@ -11,6 +10,10 @@ export const generateBudgetPDF = async (budget, options = {}) => {
   const { isEmail = false } = options;
   
   try {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable')
+    ]);
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     
@@ -62,25 +65,8 @@ export const generateBudgetPDF = async (budget, options = {}) => {
     const safeDates = budget.displayDates || budget.dates || 'N/A';
 
     // Normalize groups for display
-    let displayGroups = [];
-    if (budget.eventGroups) {
-      displayGroups = budget.eventGroups;
-    } else {
-      displayGroups = [{
-        name: budget.orgName,
-        pax: budget.pax,
-        startDate: budget.startDate,
-        endDate: budget.endDate,
-        rate: budget.conferenceRate
-      }];
-      if (budget.subGroups) {
-        displayGroups.push(...budget.subGroups.map(sg => ({
-          name: sg.orgName, pax: sg.pax, startDate: sg.startDate, endDate: sg.endDate, rate: sg.conferenceRate
-        })));
-      }
-    }
-
-    const totalPax = displayGroups.reduce((acc, g) => acc + (Number(g.pax) || 0), 0);
+    const displayGroups = migrateEventGroups(budget);
+    const totalPax = getBudgetDetails(budget).totalPax;
 
     doc.text(`Organization(s): ${budget.orgName || 'N/A'}`, detailLeft, currentY);
     doc.text(`Total Estimated PAX: ${totalPax}`, detailRight, currentY);

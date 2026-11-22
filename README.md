@@ -1,16 +1,44 @@
-# React + Vite
+# Conference Budget Control System
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React and Vite application for conference budgets, inventory, daily consumption, and historical records.
 
-Currently, two official plugins are available:
+## Local setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+2. Copy `.env.example` to `.env` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+3. Apply [`supabase_schema.sql`](./supabase_schema.sql) in the Supabase SQL editor for initial tables.
+4. Apply [`supabase_migration.sql`](./supabase_migration.sql) to enable authentication, RLS, profiles, and revision locking.
+5. Run:
+   ```bash
+   npm run dev
+   ```
 
-## React Compiler
+## Supabase accounts and roles
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Create users in Supabase Authentication, then assign each user a role in `public.profiles`:
 
-## Expanding the ESLint configuration
+```sql
+insert into public.profiles (id, role, display_name)
+values ('USER_UUID', 'chef', 'Head Chef');
+-- or role = 'storekeeper'
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Profiles cannot be created or edited through the browser. Assign and revoke roles using the Supabase dashboard or a privileged admin workflow.
+
+## Supabase data safety
+
+- Shared data is readable and writable only by authenticated users with a profile.
+- The PIN gate has been replaced by Supabase Authentication.
+- `save_conference_state` uses an optimistic revision lock to prevent whole-row lost updates.
+- The migration script is non-destructive and must be applied rather than rerunning the original demo reset.
+
+## Validation
+
+```bash
+npm test
+npm run lint
+npm run build
+```

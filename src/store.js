@@ -59,9 +59,7 @@ export const CATEGORY_COLORS = {
  * Normalizes item properties and merges duplicates based on ID or Name+Category.
  */
 export function cleanAndMergeInventory(inventory) {
-  if (!Array.isArray(inventory) || inventory.length === 0) {
-    return DEFAULT_INVENTORY;
-  }
+  if (!Array.isArray(inventory)) return [];
 
   const map = new Map();
 
@@ -72,17 +70,18 @@ export function cleanAndMergeInventory(inventory) {
     const cleanName = String(rawItem.name || '').trim().toUpperCase();
     const cleanCat = String(rawItem.cat || 'SUPERMARKET').trim().toUpperCase();
     const cleanUnit = String(rawItem.unit || 'PCS').trim().toUpperCase();
-    const numPrice = Number(rawItem.price) || 0;
-    const numStock = Number(rawItem.stock) || 0;
+    const parsedPrice = Number(rawItem.price);
+    const parsedStock = Number(rawItem.stock);
+    const numPrice = Number.isFinite(parsedPrice) ? Math.max(0, parsedPrice) : 0;
+    const numStock = Number.isFinite(parsedStock) ? Math.max(0, parsedStock) : 0;
 
     if (!cleanName && !cleanId) continue;
 
-    // Deduplication Key: Priority by ID if valid, otherwise by Name+Cat
-    const key = cleanId ? `ID:${cleanId}` : `NAME:${cleanCat}:${cleanName}`;
+    // Deduplicate by stable ID. Name/category is not a unique key.
+    const key = cleanId ? `ID:${cleanId}` : `ITEM:${cleanCat}:${cleanName}:${map.size}`;
 
     if (map.has(key)) {
       const existing = map.get(key);
-      // Merge stock and update price if existing is 0
       map.set(key, {
         ...existing,
         name: rawItem.name ? rawItem.name.trim() : existing.name,
@@ -91,30 +90,15 @@ export function cleanAndMergeInventory(inventory) {
         unit: cleanUnit || existing.unit
       });
     } else {
-      // Check if another item has the exact same name under the same category under a different key
-      const nameKey = `NAME:${cleanCat}:${cleanName}`;
-      if (cleanName && map.has(nameKey)) {
-        const existing = map.get(nameKey);
-        map.set(nameKey, {
-          ...existing,
-          price: numPrice > 0 ? numPrice : existing.price,
-          stock: (existing.stock || 0) + numStock,
-          unit: cleanUnit || existing.unit
-        });
-      } else {
-        const itemObj = {
-          id: cleanId || `ITEM_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-          cat: cleanCat,
-          name: rawItem.name ? rawItem.name.trim() : cleanName,
-          unit: cleanUnit,
-          price: numPrice,
-          stock: numStock
-        };
-        map.set(key, itemObj);
-        if (cleanName) {
-          map.set(nameKey, itemObj);
-        }
-      }
+      const itemObj = {
+        id: cleanId || `ITEM_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        cat: cleanCat,
+        name: rawItem.name ? rawItem.name.trim() : cleanName,
+        unit: cleanUnit,
+        price: numPrice,
+        stock: numStock
+      };
+      map.set(key, itemObj);
     }
   }
 

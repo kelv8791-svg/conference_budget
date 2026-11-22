@@ -22,7 +22,17 @@ export default function InventoryManager({ inventory, setInventory, role }) {
   };
 
   const handleSaveEdit = () => {
-    setInventory(inventory.map(i => i.id === editingId ? editForm : i));
+    const price = Number(editForm.price);
+    const stock = Number(editForm.stock);
+    if (!editForm.name?.trim()) return alert("Item name is required.");
+    if (!Number.isFinite(price) || price < 0) return alert("Base price must be a non-negative number.");
+    if (!Number.isFinite(stock) || stock < 0) return alert("Stock must be a non-negative number.");
+    setInventory(inventory.map(i => i.id === editingId ? {
+      ...editForm,
+      name: editForm.name.trim(),
+      price,
+      stock
+    } : i));
     setEditingId(null);
   };
 
@@ -61,12 +71,15 @@ export default function InventoryManager({ inventory, setInventory, role }) {
   };
 
   const handleSaveAdd = () => {
-    if(!addForm.name || !addForm.id) return alert("ID and Name are required");
+    if(!addForm.name?.trim() || !addForm.id) return alert("ID and Name are required");
+    const price = Number(addForm.price);
+    if (!Number.isFinite(price) || price < 0) return alert("Base price must be a non-negative number.");
+    if (!Number.isFinite(Number(addForm.stock)) || Number(addForm.stock) < 0) return alert("Stock must be a non-negative number.");
     // Check for duplicate ID
     if(inventory.find(i => i.id === addForm.id)) {
       return alert(`Error: Item with ID ${addForm.id} already exists. Please use a unique ID.`);
     }
-    setInventory([...inventory, addForm]);
+    setInventory([...inventory, { ...addForm, name: addForm.name.trim(), price, stock: Number(addForm.stock) || 0 }]);
     setIsAdding(false);
   };
 

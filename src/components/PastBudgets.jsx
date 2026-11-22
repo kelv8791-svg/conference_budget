@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { CATEGORY_COLORS } from '../store';
 import { FileDown, Printer, Trash2, Edit, ExternalLink, Mail, Search, Copy, Layers, X } from 'lucide-react';
 import { generateBudgetPDF } from '../utils/pdfExport';
+import { getBudgetDetails, isConcludedStatus } from '../utils/budgetUtils';
 
 export default function PastBudgets({ inventory, budgets, setBudgets, onEdit, onOpen, onClone }) {
   const [historySearch, setHistorySearch] = useState("");
@@ -161,6 +162,7 @@ export default function PastBudgets({ inventory, budgets, setBudgets, onEdit, on
             </thead>
             <tbody>
               {filteredHistory.map(b => {
+                const details = getBudgetDetails(b);
                 const currentTotalCost = (b.items || []).reduce((acc, item) => {
                   const invItem = inventory.find(i => i.id === item.id);
                   const price = invItem ? invItem.price : (item.price || 0);
@@ -172,7 +174,7 @@ export default function PastBudgets({ inventory, budgets, setBudgets, onEdit, on
                     <td style={{ color: "var(--text-secondary)", fontWeight: 500, padding: "1rem" }}>{new Date(b.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</td>
                     <td style={{ fontWeight: 700, color: "#9A3412" }}>{b.orgName || "Unnamed Group"}</td>
                     <td style={{ fontWeight: 600 }}>
-                      {(Number(b.pax) || 0) + (b.subGroups || []).reduce((acc, sg) => acc + (sg.pax || 0), 0)} Pax / {b.days || 1} Days
+                      {details.totalPax} Pax / {details.days} Days
                     </td>
                     <td style={{ fontWeight: 600, color: "var(--primary-color)" }}>KES {b.totalWorkshopAmount?.toLocaleString()}</td>
                     <td style={{ fontWeight: 700 }}>KES {currentTotalCost.toLocaleString()}</td>
@@ -200,7 +202,7 @@ export default function PastBudgets({ inventory, budgets, setBudgets, onEdit, on
                         
                         <button className="btn btn-danger" title="Delete Record" style={{ padding: "0.45rem" }} onClick={() => handleDelete(b.id)}><Trash2 size={14}/></button>
 
-                        {b.pax < 10 && (
+                        {details.totalPax < 10 && (
                           <button 
                             className="btn btn-secondary" 
                             title="Absorb into Large Group" 
@@ -237,7 +239,7 @@ export default function PastBudgets({ inventory, budgets, setBudgets, onEdit, on
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
                <div>
                  <h3 style={{ fontSize: "1.25rem", fontWeight: 800, color: "#1E293B" }}>Absorb Small Group</h3>
-                 <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>Merging: <span style={{ fontWeight: 700, color: "var(--primary-color)" }}>{budgets[absorbingId]?.orgName} ({budgets[absorbingId]?.pax} Pax)</span></p>
+                 <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>Merging: <span style={{ fontWeight: 700, color: "var(--primary-color)" }}>{budgets[absorbingId]?.orgName} ({getBudgetDetails(budgets[absorbingId]).totalPax} Pax)</span></p>
                </div>
                <button className="btn btn-secondary" style={{ padding: "0.5rem" }} onClick={() => setAbsorbingId(null)}><X size={20}/></button>
             </div>
@@ -246,7 +248,7 @@ export default function PastBudgets({ inventory, budgets, setBudgets, onEdit, on
             
             <div style={{ maxHeight: "300px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1.5rem" }}>
               {Object.values(budgets)
-                .filter(b => b.id !== absorbingId && b.pax >= 10 && b.status !== 'Completed')
+                .filter(b => b.id !== absorbingId && getBudgetDetails(b).totalPax >= 10 && !isConcludedStatus(b.status))
                 .sort((a,b) => new Date(b.date) - new Date(a.date))
                 .map(target => (
                   <div 
@@ -269,13 +271,13 @@ export default function PastBudgets({ inventory, budgets, setBudgets, onEdit, on
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div>
                         <p style={{ fontWeight: 700, fontSize: "0.95rem", margin: 0 }}>{target.orgName}</p>
-                        <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", margin: 0 }}>{target.pax} Pax · {target.dates}</p>
+                        <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", margin: 0 }}>{getBudgetDetails(target).totalPax} Pax · {getBudgetDetails(target).startDate} to {getBudgetDetails(target).endDate}</p>
                       </div>
                       <Layers size={18} style={{ opacity: 0.3 }} />
                     </div>
                   </div>
                 ))}
-              {Object.values(budgets).filter(b => b.id !== absorbingId && b.pax >= 10 && b.status !== 'Completed').length === 0 && (
+              {Object.values(budgets).filter(b => b.id !== absorbingId && getBudgetDetails(b).totalPax >= 10 && !isConcludedStatus(b.status)).length === 0 && (
                 <p style={{ textAlign: "center", padding: "2rem", color: "var(--text-secondary)", fontSize: "0.875rem" }}>No eligible large groups found to absorb this budget.</p>
               )}
             </div>

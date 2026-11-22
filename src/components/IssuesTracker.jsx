@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { CATEGORY_COLORS } from '../store';
+import { getBudgetDetails, isConcludedStatus, toNonNegativeNumber } from '../utils/budgetUtils';
 
 
 export default function IssuesTracker({ inventory, setInventory, budgets, setBudgets, issues, setIssues, role }) {
@@ -9,9 +10,11 @@ const [selectedBudgetId, setSelectedBudgetId] = useState("");
   const [lastSaved, setLastSaved] = useState(null);
 
   const activeBudget = budgets[selectedBudgetId] || null;
-  const isConcluded = activeBudget?.status === "Completed" || activeBudget?.status === "Cancelled" || activeBudget?.status?.includes("Returned");
+  const isConcluded = isConcludedStatus(activeBudget?.status);
 
-  const numDays = activeBudget ? (activeBudget.days || 7) : 1;
+  const budgetDetails = activeBudget ? getBudgetDetails(activeBudget) : { groups: [], numDays: 1, totalPax: 0, startDate: "", days: 1 };
+  const numDays = activeBudget ? budgetDetails.days : 1;
+  const budgetStartDate = budgetDetails.startDate;
   const DAYS = Array.from({length: numDays}, (_, i) => `Day ${i+1}`);
 
   // Auto-detect current day on budget change
@@ -20,7 +23,7 @@ const [selectedBudgetId, setSelectedBudgetId] = useState("");
 
     const today = new Date();
     today.setHours(0,0,0,0);
-    const start = new Date(activeBudget.startDate);
+    const start = new Date(`${budgetStartDate}T00:00:00`);
     start.setHours(0,0,0,0);
 
     if (!isNaN(start.getTime())) {
@@ -29,7 +32,7 @@ const [selectedBudgetId, setSelectedBudgetId] = useState("");
         setCurrentDay(`Day ${diffDays}`);
       }
     }
-  }, [selectedBudgetId, activeBudget, numDays]);
+  }, [selectedBudgetId, activeBudget, numDays, budgetStartDate]);
 
   React.useEffect(() => {
     if (!selectedBudgetId) {
@@ -59,7 +62,7 @@ const [selectedBudgetId, setSelectedBudgetId] = useState("");
     if (isConcluded) return;
     setDraftIssues(prev => ({
       ...prev,
-      [itemId]: Number(val)
+      [itemId]: toNonNegativeNumber(val)
     }));
   };
 
@@ -141,7 +144,8 @@ const [selectedBudgetId, setSelectedBudgetId] = useState("");
           if (id === selectedBudgetId) return;
           const b = next[id];
           if (b.status === "Draft" || !b.status) {
-            const end = new Date(b.endDate);
+            const endDate = getBudgetDetails(b).endDate;
+            const end = new Date(`${endDate}T00:00:00`);
             if (!isNaN(end.getTime()) && end < today) {
               next[id] = { ...b, status: "Archived" };
             }
@@ -277,7 +281,7 @@ const [selectedBudgetId, setSelectedBudgetId] = useState("");
             </div>
             <div>
               <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", fontWeight: 600, textTransform: "uppercase" }}>Event Details</p>
-              <p style={{ fontWeight: 700 }}>{(Number(activeBudget.pax) || 0) + (activeBudget.subGroups || []).reduce((acc, sg) => acc + (sg.pax || 0), 0)} PAX · {activeBudget.days} Days</p>
+              <p style={{ fontWeight: 700 }}>{budgetDetails.totalPax} PAX · {budgetDetails.days} Days</p>
               <p style={{ fontSize: "0.875rem", color: "var(--primary-color)", fontWeight: 600 }}>Status: {activeBudget.status || "Active"}</p>
             </div>
             <div>

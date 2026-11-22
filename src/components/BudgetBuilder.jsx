@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CATEGORY_COLORS } from '../store';
 import { FileDown, Printer, Save, Plus, Trash2, Edit } from 'lucide-react';
 import { generateBudgetPDF } from '../utils/pdfExport';
+import { calculateGroupDays, isConcludedStatus, toNonNegativeNumber } from '../utils/budgetUtils';
 
 export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadId, onClearPreload, isClone, setSection }) {
   const [editingBudgetId, setEditingBudgetId] = useState("");
@@ -28,17 +29,7 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
       cat: invItem ? invItem.cat : item.cat
     };
   });
-  const isCompleted = budgets[editingBudgetId]?.status === "Completed" || budgets[editingBudgetId]?.status?.includes("Returned");
-  const calculateGroupDays = (start, end) => {
-    if (start && end) {
-      const s = new Date(start);
-      const e = new Date(end);
-      const diffTime = e - s;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-      return diffDays > 0 ? diffDays : 1;
-    }
-    return 1;
-  };
+  const isCompleted = isConcludedStatus(budgets[editingBudgetId]?.status);
 
   const getOverallDates = () => {
     const starts = eventGroups.map(g => g.startDate).filter(d => d);
@@ -68,7 +59,8 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
 
   const updateGroup = (idx, field, val) => {
     const next = [...eventGroups];
-    next[idx] = { ...next[idx], [field]: val };
+    const nextValue = field === "pax" || field === "rate" ? toNonNegativeNumber(val) : val;
+    next[idx] = { ...next[idx], [field]: nextValue };
     setEventGroups(next);
   };
 
@@ -165,7 +157,7 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
   };
 
   const updateQty = (id, val) => {
-    setSelectedItems(selectedItems.map(i => i.id === id ? { ...i, budgetQty: Number(val) } : i));
+    setSelectedItems(selectedItems.map(i => i.id === id ? { ...i, budgetQty: toNonNegativeNumber(val) } : i));
   };
 
   const currentCost = enrichedItems.reduce((acc, curr) => acc + (Number(curr.budgetQty || 0) * Number(curr.price || 0)), 0);
@@ -180,7 +172,7 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
   const foodCostVariance = targetFoodCost - currentCost;
 
   const handleSave = () => {
-    const isCompleted = budgets[editingBudgetId]?.status === "Completed" || budgets[editingBudgetId]?.status?.includes("Returned");
+    const isCompleted = isConcludedStatus(budgets[editingBudgetId]?.status);
     
     if (isCompleted) {
       return alert("This budget is COMPLETED and locked. Please use the 'Clone' feature from the Past Budgets section to create a new budget based on this one.");
@@ -190,6 +182,10 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
     
     const hasValidDates = eventGroups.every(g => g.startDate && g.endDate);
     if (!hasValidDates) return alert("Please select both start and end dates for all groups.");
+    const hasInvalidDates = eventGroups.some(g => new Date(`${g.endDate}T00:00:00`) < new Date(`${g.startDate}T00:00:00`));
+    if (hasInvalidDates) return alert("Each end date must be on or after its start date.");
+    const hasInvalidNumbers = eventGroups.some(g => toNonNegativeNumber(g.pax) !== Number(g.pax) || toNonNegativeNumber(g.rate) !== Number(g.rate));
+    if (hasInvalidNumbers) return alert("PAX and rates must be valid non-negative numbers.");
     
     // Enrich items with LATEST metadata (price, name, unit) before saving
     const itemsToSave = selectedItems.map(item => {

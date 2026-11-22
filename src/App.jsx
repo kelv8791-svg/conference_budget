@@ -3,11 +3,10 @@ import Sidebar from "./components/Sidebar";
 import InventoryManager from "./components/InventoryManager";
 import BudgetBuilder from "./components/BudgetBuilder";
 import IssuesTracker from "./components/IssuesTracker";
-import PinGate from "./components/PinGate";
 import PastBudgets from "./components/PastBudgets";
 import { supabase } from "./supabaseClient";
 import { DEFAULT_INVENTORY, cleanAndMergeInventory } from "./store";
-import { ChefHat, Store, RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { ChefHat, Store } from 'lucide-react';
 
 const DATA_ROW_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -29,8 +28,19 @@ const ROLES = [
   { key: "storekeeper", label: "Storekeeper", icon: Store, color: "#059669", desc: "Inventory · Daily Issues" }
 ];
 
-function Login({ onLogin }) {
+function Login({ onLoginError }) {
   const [hov, setHov] = useState(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [signingIn, setSigningIn] = useState(false);
+
+  const handleSignIn = async (event) => {
+    event.preventDefault();
+    setSigningIn(true);
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error) onLoginError(error.message);
+    setSigningIn(false);
+  };
   
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "var(--bg-body)", position: "relative", overflow: "hidden" }}>
@@ -46,12 +56,36 @@ function Login({ onLogin }) {
           </div>
           
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1.5rem" }}>
+            <form onSubmit={handleSignIn} className="card" style={{ gridColumn: "1 / -1", maxWidth: 520, width: "100%", justifySelf: "center" }}>
+              <h3 style={{ marginBottom: "1rem", fontWeight: 800 }}>Sign in</h3>
+              <input
+                className="input-field"
+                type="email"
+                placeholder="Work email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                autoComplete="email"
+                required
+              />
+              <input
+                className="input-field"
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                required
+              />
+              <button className="btn btn-primary" type="submit" disabled={signingIn} style={{ width: "100%" }}>
+                {signingIn ? "Signing in..." : "Continue"}
+              </button>
+            </form>
             {ROLES.map(r => {
               const Icon = r.icon;
               const isHov = hov === r.key;
               return (
                 <div 
-                  key={r.key} onClick={() => onLogin(r.key)}
+                  key={r.key}
                   onMouseEnter={() => setHov(r.key)} onMouseLeave={() => setHov(null)}
                   className="card"
                   style={{
@@ -81,8 +115,9 @@ function Login({ onLogin }) {
 
 export default function App() {
   const [role, setRole] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
   const [section, setSection] = useState("summary");
-  const [pinUnlocked, setPinUnlocked] = useState(false);
   const [preloadId, setPreloadId] = useState("");
   const [isClone, setIsClone] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -95,8 +130,52 @@ export default function App() {
     inventory: DEFAULT_INVENTORY,
     budgets: {},
     issues: {},
-    lastCommit: null
+    lastCommit: null,
+    revision: 0
   });
+
+  useEffect(() => {
+    let active = true;
+
+    const loadProfile = async (session) => {
+      if (!session?.user) {
+        if (active) {
+          setRole(null);
+          setAuthLoading(false);
+          setAuthError(null);
+        }
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", session.user.id)
+        .single();
+
+      if (!active) return;
+      if (error || !data) {
+        setRole(null);
+        setAuthError("This account does not have an assigned application role.");
+      } else {
+        setRole(data.role);
+        setSection(data.role === "storekeeper" ? "inventory" : "budget");
+        setAuthError(null);
+      }
+      setAuthLoading(false);
+    };
+
+    supabase.auth.getSession().then(({ data }) => loadProfile(data.session));
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthLoading(true);
+      loadProfile(session);
+    });
+
+    return () => {
+      active = false;
+      subscription.subscription.unsubscribe();
+    };
+  }, []);
 
   // Keep a ref to the latest state to avoid stale closures in sync logic
   const dataRef = React.useRef(appData);
@@ -104,33 +183,45 @@ export default function App() {
 
   // Sync with Supabase on mount
   useEffect(() => {
+    if (!role) {
+      setLoading(false);
+      return undefined;
+    }
+
     async function fetchData() {
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('conference_data')
           .select('*')
           .eq('id', DATA_ROW_ID)
           .single();
+
+        if (error) throw error;
         
         if (data) {
-          const rawInv = safeParseJSON(data.inventory, DEFAULT_INVENTORY);
+          const rawInv = safeParseJSON(data.inventory, []);
           const rawBudgets = safeParseJSON(data.budget, {});
           const rawIssues = safeParseJSON(data.issues, {});
 
           const cleanInv = cleanAndMergeInventory(rawInv);
           
-          setAppData({
+          const refreshed = {
             inventory: cleanInv,
             budgets: typeof rawBudgets === 'object' && !Array.isArray(rawBudgets) ? rawBudgets : {},
             issues: typeof rawIssues === 'object' && !Array.isArray(rawIssues) ? rawIssues : {},
-            lastCommit: data.updated_at
-          });
+            lastCommit: data.updated_at,
+            revision: Number(data.revision) || 0
+          };
+          dataRef.current = refreshed;
+          setAppData(refreshed);
           setIsOnline(true);
         } else {
           setAppData({
-            inventory: DEFAULT_INVENTORY,
+            inventory: [],
             budgets: {},
-            issues: {}
+            issues: {},
+            lastCommit: null,
+            revision: 0
           });
           setIsOnline(true);
         }
@@ -154,7 +245,10 @@ export default function App() {
         filter: `id=eq.${DATA_ROW_ID}`
       },
         (payload) => {
-          if (payload.new && payload.new.updated_at !== dataRef.current.lastCommit) {
+          if (payload.new && (
+            payload.new.revision !== dataRef.current.revision ||
+            payload.new.updated_at !== dataRef.current.lastCommit
+          )) {
             const incomingInv = safeParseJSON(payload.new.inventory, dataRef.current.inventory);
             const incomingBudgets = safeParseJSON(payload.new.budget, dataRef.current.budgets);
             const incomingIssues = safeParseJSON(payload.new.issues, dataRef.current.issues);
@@ -165,7 +259,8 @@ export default function App() {
               inventory: cleanInv,
               budgets: typeof incomingBudgets === 'object' && !Array.isArray(incomingBudgets) ? incomingBudgets : dataRef.current.budgets,
               issues: typeof incomingIssues === 'object' && !Array.isArray(incomingIssues) ? incomingIssues : dataRef.current.issues,
-              lastCommit: payload.new.updated_at
+              lastCommit: payload.new.updated_at,
+              revision: Number(payload.new.revision) || 0
             });
             setIsOnline(true);
           }
@@ -176,13 +271,11 @@ export default function App() {
       });
 
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [role]);
 
   // Helper to push all state to Supabase - Supports functional updates & atomic merging
   const persist = async (updates) => {
     setSyncing(true);
-
-    const nowIso = new Date().toISOString();
 
     const nextBudgets = typeof updates.budgets === 'function' 
       ? updates.budgets(dataRef.current.budgets) 
@@ -202,7 +295,7 @@ export default function App() {
       inventory: cleanInv,
       budgets: typeof nextBudgets === 'object' && !Array.isArray(nextBudgets) ? nextBudgets : {},
       issues: typeof nextIssues === 'object' && !Array.isArray(nextIssues) ? nextIssues : {},
-      lastCommit: nowIso
+      revision: dataRef.current.revision
     };
 
     // Update ref immediately to prevent race conditions and ignore self-echoes
@@ -210,26 +303,26 @@ export default function App() {
     setAppData(finalData);
 
     try {
-      const { data, error } = await supabase
-        .from('conference_data')
-        .upsert({
-          id: DATA_ROW_ID,
-          inventory: finalData.inventory,
-          budget: finalData.budgets,
-          issues: finalData.issues,
-          updated_at: nowIso
-        })
-        .select('updated_at')
-        .single();
+      const { data, error } = await supabase.rpc('save_conference_state', {
+        p_expected_revision: dataRef.current.revision,
+        p_inventory: finalData.inventory,
+        p_budget: finalData.budgets,
+        p_issues: finalData.issues
+      });
       
       if (error) {
         console.error("Persist Error:", error);
         setErrorMsg(error.message || "Failed to save changes.");
         setIsOnline(false);
+        await refreshData();
       } else {
-        const commitTime = data?.updated_at || nowIso;
-        dataRef.current.lastCommit = commitTime;
-        setAppData(prev => ({ ...prev, lastCommit: commitTime }));
+        dataRef.current.revision = Number(data?.revision) || dataRef.current.revision + 1;
+        dataRef.current.lastCommit = data?.updated_at || dataRef.current.lastCommit;
+        setAppData(prev => ({
+          ...prev,
+          lastCommit: data?.updated_at || prev.lastCommit,
+          revision: Number(data?.revision) || prev.revision + 1
+        }));
         setIsOnline(true);
         setErrorMsg(null);
       }
@@ -246,16 +339,16 @@ export default function App() {
 
   // Manual refresh function for sync recovery
   const refreshData = async () => {
-    if (syncing) return;
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('conference_data')
         .select('*')
         .eq('id', DATA_ROW_ID)
         .single();
+      if (error) throw error;
 
       if (data) {
-        const rawInv = safeParseJSON(data.inventory, DEFAULT_INVENTORY);
+        const rawInv = safeParseJSON(data.inventory, []);
         const rawBudgets = safeParseJSON(data.budget, {});
         const rawIssues = safeParseJSON(data.issues, {});
         const cleanInv = cleanAndMergeInventory(rawInv);
@@ -264,7 +357,8 @@ export default function App() {
           inventory: cleanInv,
           budgets: typeof rawBudgets === 'object' && !Array.isArray(rawBudgets) ? rawBudgets : {},
           issues: typeof rawIssues === 'object' && !Array.isArray(rawIssues) ? rawIssues : {},
-          lastCommit: data.updated_at
+          lastCommit: data.updated_at,
+          revision: Number(data.revision) || 0
         });
         setIsOnline(true);
         setErrorMsg(null);
@@ -275,7 +369,15 @@ export default function App() {
     }
   };
 
-  if (loading) {
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-body)" }}>
+        <p style={{ color: "var(--text-secondary)", fontWeight: 600 }}>Checking secure access...</p>
+      </div>
+    );
+  }
+
+  if (loading && role) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-body)" }}>
         <div style={{ textAlign: "center" }}>
@@ -288,14 +390,16 @@ export default function App() {
   }
 
   if (!role) {
-    return <Login onLogin={(r) => { 
-      setRole(r); setPinUnlocked(false);
-      setSection(r === "storekeeper" ? "inventory" : "budget"); 
-    }} />;
-  }
-
-  if (role === "storekeeper" && !pinUnlocked) {
-    return <PinGate onSuccess={() => setPinUnlocked(true)} />;
+    return (
+      <>
+        {authError && (
+          <div style={{ position: "fixed", zIndex: 1200, top: "1rem", left: "50%", transform: "translateX(-50%)", background: "var(--danger-light)", color: "var(--danger-color)", padding: "0.75rem 1rem", borderRadius: "0.75rem", fontWeight: 700 }}>
+            {authError}
+          </div>
+        )}
+        <Login onLoginError={(message) => setAuthError(message)} />
+      </>
+    );
   }
 
   return (
@@ -304,7 +408,7 @@ export default function App() {
         role={role}
         active={section}
         onNav={setSection}
-        onLogout={() => { setRole(null); setSection(null); setPinUnlocked(false); }}
+        onLogout={async () => { await supabase.auth.signOut(); setRole(null); setSection(null); }}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         isOnline={isOnline}

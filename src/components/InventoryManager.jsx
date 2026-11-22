@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CATEGORY_COLORS, DEFAULT_INVENTORY } from '../store';
-import { Plus, Edit2, Trash2, Save, X, RotateCcw } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, X, ChevronDown, ChevronRight } from 'lucide-react';
 
 export default function InventoryManager({ inventory, setInventory, role }) {
   const [editingId, setEditingId] = useState(null);
@@ -11,6 +11,16 @@ export default function InventoryManager({ inventory, setInventory, role }) {
   // Search and Filtering State
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("ALL");
+  const [expandedCategories, setExpandedCategories] = useState(() => new Set(["BUTCHERY"]));
+  
+  const toggleCategory = (category) => {
+    setExpandedCategories(previous => {
+      const next = new Set(previous);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  };
   
   const isStore = role === "storekeeper";
   const spacing = isStore ? "0.4rem 0.6rem" : "0.75rem 1rem";
@@ -135,7 +145,7 @@ export default function InventoryManager({ inventory, setInventory, role }) {
         {/* Title and Add Button */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem" }}>
           <div>
-            <h2 style={{ fontSize: isStore ? "1.5rem" : "1.75rem", fontWeight: 800 }}>📦 Master Inventory</h2>
+            <h2 style={{ fontSize: isStore ? "1.5rem" : "1.75rem", fontWeight: 800 }}>Master Inventory</h2>
             <p style={{ color: "var(--text-secondary)", marginTop: "0.25rem", fontSize: isStore ? "0.8rem" : "1rem" }}>{isStore ? "Quick-access stock management for store operations." : "Search, filter, and manage your central stock database."}</p>
           </div>
           <div style={{ display: "flex", gap: "0.75rem" }}>
@@ -285,25 +295,29 @@ export default function InventoryManager({ inventory, setInventory, role }) {
                 if (itemsInCat.length === 0) return null;
 
                 const catConfig = CATEGORY_COLORS[category] || { color: "#64748b", bg: "#f1f5f9" };
+                const isExpanded = activeTab !== "ALL" || expandedCategories.has(category) || Boolean(searchTerm);
 
                 return (
                   <React.Fragment key={category}>
                     {activeTab === "ALL" && (
-                      <tr style={{ background: "var(--bg-body)" }}>
-                        <td colSpan="5" style={{ padding: "0.75rem 1.5rem", background: "rgba(0,0,0,0.02)", borderBottom: "1px solid var(--border-light)" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                            <div style={{ width: "12px", height: "12px", borderRadius: "3px", background: catConfig.color }} />
-                            <span style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-secondary)" }}>
+                      <tr
+                        style={{ background: "rgba(255,255,255,0.42)" }}
+                      >
+                        <td colSpan={isStore ? "6" : "5"} style={{ padding: "0.55rem 1rem", borderBottom: "1px solid var(--border-light)" }}>
+                          <button type="button" onClick={() => toggleCategory(category)} style={{ width: "100%", border: "none", background: "transparent", display: "flex", alignItems: "center", gap: "0.65rem", cursor: "pointer", color: "var(--text-primary)" }}>
+                            {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                            <div style={{ width: "9px", height: "9px", borderRadius: "3px", background: catConfig.color }} />
+                            <span style={{ fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em" }}>
                               {category}
                             </span>
-                            <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--text-secondary)", opacity: 0.6 }}>
-                              ({itemsInCat.length} items)
+                            <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--text-secondary)" }}>
+                              {itemsInCat.length} items
                             </span>
-                          </div>
+                          </button>
                         </td>
                       </tr>
                     )}
-                    {itemsInCat.map(item => {
+                    {isExpanded && itemsInCat.map(item => {
                       const isEditing = editingId === item.id;
                       const catStyle = CATEGORY_COLORS[item.cat] || { color: "#64748b", bg: "#f1f5f9" };
                       

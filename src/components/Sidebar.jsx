@@ -61,7 +61,7 @@ export default function Sidebar({
 
       <div 
         style={{ 
-          width: isCollapsed ? 80 : 260, 
+          width: isCollapsed ? 80 : 230, 
           background: "#fff", 
           borderRight: "1px solid var(--border-light)", 
           display: "flex", 
@@ -90,13 +90,16 @@ export default function Sidebar({
 
         <div style={{ padding: isCollapsed ? "1rem" : "1.5rem", borderBottom: "1px solid var(--border-light)", textAlign: "center", minHeight: 80, display: "flex", alignItems: "center", justifyContent: "center" }}>
           {isCollapsed ? (
-            <div style={{ fontWeight: 900, fontSize: "1.25rem", color: "var(--primary-color)" }}>E</div>
+            <div className="brand-mark">E</div>
           ) : (
-            <img src="/logo.jpg" alt="Logo" style={{ width: "100%", height: "auto", maxHeight: "50px", objectFit: "contain" }} />
+            <div className="sidebar-brand sidebar-brand-text">
+              <strong>EPASHIKINO</strong>
+              <span>OPERATIONS</span>
+            </div>
           )}
         </div>
         
-        <div style={{ padding: isCollapsed ? "1rem 0.5rem" : "1.25rem" }}>
+        <div className="sidebar-navigation" style={{ padding: isCollapsed ? "1rem 0.5rem" : "0.9rem 0.85rem" }}>
           {!isCollapsed && (
             <p className="menu-header" style={{ fontSize: "0.65rem", textTransform: "uppercase", fontWeight: 800, color: "var(--text-secondary)", letterSpacing: "0.05em", marginBottom: "0.75rem", paddingLeft: "0.5rem" }}>Main Menu</p>
           )}
@@ -107,6 +110,7 @@ export default function Sidebar({
               return (
                 <button
                   key={item.id}
+                  className={`sidebar-nav-item ${isActive ? "active" : ""}`}
                   onClick={() => {
                     onNav(item.id);
                     setIsOpen(false);
@@ -117,14 +121,9 @@ export default function Sidebar({
                     gap: isCollapsed ? "0" : "0.75rem", width: "100%", 
                     padding: isCollapsed ? "0.75rem" : "0.65rem 1rem", 
                     borderRadius: "0.5rem", border: "none", cursor: "pointer",
-                    background: isActive ? "var(--primary-color)" : "transparent",
-                    color: isActive ? "white" : "var(--text-secondary)",
                     fontWeight: isActive ? 600 : 500,
-                    transition: "all 0.2s",
                     position: "relative"
                   }}
-                  onMouseEnter={(e) => { if(!isActive) { e.currentTarget.style.background = "#F1F5F9"; e.currentTarget.style.color = "var(--text-primary)" } }}
-                  onMouseLeave={(e) => { if(!isActive) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-secondary)" } }}
                 >
                   <Icon size={isCollapsed ? 20 : 18} />
                   {!isCollapsed && <span className="sidebar-label" style={{ fontSize: "0.875rem", flex: 1 }}>{item.label}</span>}

@@ -208,7 +208,7 @@ const [selectedBudgetId, setSelectedBudgetId] = useState("");
     <div className="fade-in">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "2rem" }}>
         <div>
-          <h2 style={{ fontSize: "1.75rem", fontWeight: 800 }}>📋 Consumption Issues Tracker</h2>
+          <h2 style={{ fontSize: "1.75rem", fontWeight: 800 }}>Consumption Issues Tracker</h2>
           <p style={{ color: "var(--text-secondary)", marginTop: "0.25rem" }}>Track daily consumption and manage surplus stock returns.</p>
         </div>
         <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>

@@ -237,7 +237,7 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
     <div className="fade-in print-container">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "2rem" }} className="no-print">
         <div>
-          <h2 style={{ fontSize: "1.75rem", fontWeight: 800 }}>📝 Budget Builder</h2>
+          <h2 style={{ fontSize: "1.75rem", fontWeight: 800 }}>Budget Builder</h2>
           <p style={{ color: "var(--text-secondary)", marginTop: "0.25rem" }}>Create, edit, and track event budgets with historical referencing.</p>
         </div>
         <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>

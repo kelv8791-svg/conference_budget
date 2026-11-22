@@ -6,7 +6,7 @@ import IssuesTracker from "./components/IssuesTracker";
 import PastBudgets from "./components/PastBudgets";
 import { supabase } from "./supabaseClient";
 import { DEFAULT_INVENTORY, cleanAndMergeInventory } from "./store";
-import { ChefHat, Store } from 'lucide-react';
+import { Store } from 'lucide-react';
 
 const DATA_ROW_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -23,13 +23,86 @@ function safeParseJSON(val, fallback) {
   return val;
 }
 
-const ROLES = [
-  { key: "chef", label: "Head Chef", icon: ChefHat, color: "#D97706", desc: "Budget · Consumption · Requisitions" },
-  { key: "storekeeper", label: "Storekeeper", icon: Store, color: "#059669", desc: "Inventory · Daily Issues" }
-];
+function DepartmentPortal({ onSelectDepartment }) {
+  const date = new Intl.DateTimeFormat("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric"
+  }).format(new Date());
 
-function Login({ onLoginError }) {
-  const [hov, setHov] = useState(null);
+  return (
+    <main className="portal-page">
+      <header className="portal-header">
+        <div className="portal-wordmark">
+          <strong>EPASHIKINO</strong>
+          <span>RESORT & SPA</span>
+        </div>
+        <div className="portal-header-actions">
+          <time>{date}</time>
+          <a href="mailto:support@epaconf.com" className="support-link">
+            <span className="support-icon">?</span>
+            Support
+          </a>
+        </div>
+      </header>
+
+      <section className="portal-shell fade-in" aria-label="Department portal selection">
+        <div className="portal-brand">
+          <div className="portal-brand-inner">
+            <div className="portal-operation-label">
+              <span className="portal-operation-icon">E</span>
+              <span>OPERATIONS HUB</span>
+            </div>
+            <div className="portal-brand-copy">
+              <p>One calm place for the teams behind every memorable guest experience.</p>
+              <h1>Great hospitality.<br />Seamless operations.</h1>
+            </div>
+            <div className="portal-brand-footer">
+              <span>Protected staff workspace</span>
+              <span>© 2026 Epashikino Budget System</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="portal-access">
+          <div className="portal-access-inner">
+            <p className="portal-eyebrow">STAFF SIGN-IN</p>
+            <h2>Welcome back.</h2>
+            <p className="portal-subtitle">Choose your portal to access the tools tailored to today&apos;s responsibilities.</p>
+
+            <div className="department-list">
+              <button type="button" className="department-card" onClick={() => onSelectDepartment("chef")}>
+                <span className="department-icon">H</span>
+                <span className="department-copy">
+                  <strong>Head Chef Portal</strong>
+                  <small>Budget & Stock</small>
+                </span>
+                <span className="department-arrow">→</span>
+              </button>
+
+              <button type="button" className="department-card" onClick={() => onSelectDepartment("storekeeper")}>
+                <span className="department-icon">S</span>
+                <span className="department-copy">
+                  <strong>Storekeeper Portal</strong>
+                  <small>Stock Inventory</small>
+                </span>
+                <span className="department-arrow">→</span>
+              </button>
+            </div>
+
+            <div className="portal-security">
+              <span>✓</span>
+              Your access is managed by Resort Operations.
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function Login({ onLoginError, department, onBack }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [signingIn, setSigningIn] = useState(false);
@@ -38,83 +111,120 @@ function Login({ onLoginError }) {
     event.preventDefault();
     setSigningIn(true);
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    if (error) onLoginError(error.message);
+    if (error) {
+      onLoginError(error.message);
+      setSigningIn(false);
+      return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData.session?.user?.id;
+    if (userId) {
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", userId)
+        .single();
+
+      if (profileError || !profile) {
+        await supabase.auth.signOut();
+        onLoginError("This account does not have an assigned application role.");
+        setSigningIn(false);
+        return;
+      }
+
+      if (profile.role !== department) {
+        await supabase.auth.signOut();
+        onLoginError(`This account is not assigned to the ${department === "chef" ? "Head Chef" : "Storekeeper"} portal.`);
+        setSigningIn(false);
+        return;
+      }
+    }
     setSigningIn(false);
   };
   
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "var(--bg-body)", position: "relative", overflow: "hidden" }}>
-      {/* Decorative background blurs */}
-      <div style={{ position: "absolute", top: "-10%", left: "-5%", width: "40vw", height: "40vw", background: "var(--primary-color)", opacity: 0.05, filter: "blur(100px)", borderRadius: "50%" }} />
-      <div style={{ position: "absolute", bottom: "-10%", right: "-5%", width: "40vw", height: "40vw", background: "var(--success-color)", opacity: 0.05, filter: "blur(100px)", borderRadius: "50%" }} />
-      
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem", zIndex: 1 }}>
-        <div className="fade-in" style={{ width: "100%", maxWidth: 900 }}>
-          <div style={{ textAlign: "center", marginBottom: "4rem" }}>
-            <img src="/logo.jpg" alt="Epashikino Resort & Spa" style={{ height: "140px", objectFit: "contain", marginBottom: "0.5rem" }} />
-            <p style={{ color: "var(--text-secondary)", fontSize: "1.25rem", fontWeight: 500 }}>Conference & Accommodation Budget Control System</p>
-          </div>
-          
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1.5rem" }}>
-            <form onSubmit={handleSignIn} className="card" style={{ gridColumn: "1 / -1", maxWidth: 520, width: "100%", justifySelf: "center" }}>
-              <h3 style={{ marginBottom: "1rem", fontWeight: 800 }}>Sign in</h3>
-              <input
-                className="input-field"
-                type="email"
-                placeholder="Work email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                autoComplete="email"
-                required
-              />
-              <input
-                className="input-field"
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="current-password"
-                required
-              />
-              <button className="btn btn-primary" type="submit" disabled={signingIn} style={{ width: "100%" }}>
-                {signingIn ? "Signing in..." : "Continue"}
-              </button>
-            </form>
-            {ROLES.map(r => {
-              const Icon = r.icon;
-              const isHov = hov === r.key;
-              return (
-                <div 
-                  key={r.key}
-                  onMouseEnter={() => setHov(r.key)} onMouseLeave={() => setHov(null)}
-                  className="card"
-                  style={{
-                    background: isHov ? r.color : "rgba(255,255,255,0.7)",
-                    backdropFilter: "blur(12px)",
-                    color: isHov ? "white" : "var(--text-primary)",
-                    border: `2px solid ${isHov ? r.color : "white"}`,
-                    cursor: "pointer", 
-                    transform: isHov ? "translateY(-6px)" : "none",
-                    boxShadow: isHov ? "0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)" : "var(--shadow-md)"
-                  }}
-                >
-                  <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 56, height: 56, borderRadius: "1rem", background: isHov ? "rgba(255,255,255,0.2)" : "var(--bg-body)", color: isHov ? "white" : r.color, marginBottom: "1.25rem", transition: "all 0.3s" }}>
-                    <Icon size={28} />
-                  </div>
-                  <h3 style={{ fontSize: "1.125rem", fontWeight: 700, marginBottom: "0.5rem" }}>{r.label}</h3>
-                  <p style={{ fontSize: "0.875rem", color: isHov ? "rgba(255,255,255,0.9)" : "var(--text-secondary)", fontWeight: 500, lineHeight: 1.5 }}>{r.desc}</p>
-                </div>
-              );
-            })}
+    <main className="portal-page portal-login-page">
+      <header className="portal-header">
+        <div className="portal-wordmark">
+          <strong>EPASHIKINO</strong>
+          <span>RESORT & SPA</span>
+        </div>
+        <div className="portal-header-actions">
+          <time>{new Intl.DateTimeFormat("en-GB", {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            year: "numeric"
+          }).format(new Date())}</time>
+          <a href="mailto:support@epaconf.com" className="support-link">
+            <span className="support-icon">?</span>
+            Support
+          </a>
+        </div>
+      </header>
+
+      <section className="portal-shell portal-login-shell fade-in" aria-label="Department staff sign-in">
+        <div className="portal-brand">
+          <div className="portal-brand-inner">
+            <div className="portal-operation-label">
+              <span className="portal-operation-icon">{department === "chef" ? "H" : "S"}</span>
+              <span>{department === "chef" ? "HEAD CHEF PORTAL" : "STOREKEEPER PORTAL"}</span>
+            </div>
+            <div className="portal-brand-copy">
+              <p>{department === "chef" ? "Budget planning and food operations." : "Stock management and daily inventory."}</p>
+              <h1>{department === "chef" ? "Great hospitality." : "Seamless operations."}<br />{department === "chef" ? "Seamless operations." : "Staff access."}</h1>
+            </div>
+            <div className="portal-brand-footer">
+              <span>Protected staff workspace</span>
+              <span>© 2026 Epashikino Budget System</span>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
+
+        <div className="login-panel portal-login-panel">
+          <div className="login-card fade-in">
+            <button type="button" className="login-back" onClick={onBack}>← All portals</button>
+            <p className="login-welcome">STAFF SIGN-IN</p>
+            <form onSubmit={handleSignIn} className="login-form">
+              <label>
+                <span>Email address</span>
+                <input
+                  className="input-field"
+                  type="email"
+                  placeholder="name@epaconf.com"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  autoComplete="email"
+                  required
+                />
+              </label>
+              <label>
+                <span>Password</span>
+                <input
+                  className="input-field"
+                  type="password"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+              <button className="btn btn-primary login-submit" type="submit" disabled={signingIn}>
+                {signingIn ? "Signing in..." : "Sign in"}
+              </button>
+            </form>
+          </div>
+        </div>
+      </section>
+    </main>
   );
 }
 
 export default function App() {
   const [role, setRole] = useState(null);
+  const [selectedDepartment, setSelectedDepartment] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
   const [section, setSection] = useState("summary");
@@ -390,6 +500,20 @@ export default function App() {
   }
 
   if (!role) {
+    if (!selectedDepartment) {
+      return (
+        <>
+          {authError && (
+            <div className="portal-error" role="alert">{authError}</div>
+          )}
+          <DepartmentPortal onSelectDepartment={(department) => {
+            setSelectedDepartment(department);
+            setAuthError(null);
+          }} />
+        </>
+      );
+    }
+
     return (
       <>
         {authError && (
@@ -397,7 +521,11 @@ export default function App() {
             {authError}
           </div>
         )}
-        <Login onLoginError={(message) => setAuthError(message)} />
+        <Login
+          department={selectedDepartment}
+          onBack={() => { setSelectedDepartment(null); setAuthError(null); }}
+          onLoginError={(message) => setAuthError(message)}
+        />
       </>
     );
   }
@@ -408,7 +536,7 @@ export default function App() {
         role={role}
         active={section}
         onNav={setSection}
-        onLogout={async () => { await supabase.auth.signOut(); setRole(null); setSection(null); }}
+        onLogout={async () => { await supabase.auth.signOut(); setRole(null); setSection(null); setSelectedDepartment(null); }}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         isOnline={isOnline}
@@ -480,7 +608,7 @@ function ExecutiveDashboard({ appData }) {
     <div className="fade-in">
       <div style={{ marginBottom: "2rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <h2 style={{ fontSize: "1.75rem", fontWeight: 800 }}>📊 Executive Dashboard</h2>
+          <h2 style={{ fontSize: "1.75rem", fontWeight: 800 }}>Executive Dashboard</h2>
           <p style={{ color: "var(--text-secondary)", marginTop: "0.25rem" }}>High-level financial summaries and operational health metrics.</p>
         </div>
         {lowStockItems.length > 0 && (
@@ -492,7 +620,7 @@ function ExecutiveDashboard({ appData }) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.5rem", marginBottom: "2rem" }}>
-        <div className="card" style={{ borderLeft: "4px solid var(--primary-color)" }}>
+        <div className="card">
           <p style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Expected Revenue (All)</p>
           <h3 style={{ fontSize: "1.5rem", fontWeight: 800, marginTop: "0.5rem" }}>KES {totalRevenue.toLocaleString()}</h3>
           <div style={{ marginTop: "0.75rem", display: "flex", gap: "1rem" }}>
@@ -507,7 +635,7 @@ function ExecutiveDashboard({ appData }) {
           </div>
         </div>
 
-        <div className="card" style={{ borderLeft: "4px solid var(--success-color)" }}>
+        <div className="card">
           <p style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Total Budgeted Food Cost</p>
           <h3 style={{ fontSize: "1.5rem", fontWeight: 800, marginTop: "0.5rem" }}>KES {totalFoodCost.toLocaleString()}</h3>
           <div style={{ marginTop: "0.75rem", display: "flex", gap: "1rem" }}>

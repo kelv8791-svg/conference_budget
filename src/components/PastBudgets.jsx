@@ -125,7 +125,7 @@ export default function PastBudgets({ inventory, budgets, setBudgets, onEdit, on
     <div className="fade-in">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "2rem" }}>
         <div>
-          <h2 style={{ fontSize: "1.75rem", fontWeight: 800 }}>📂 Past Budgets & Records</h2>
+          <h2 style={{ fontSize: "1.75rem", fontWeight: 800 }}>Past Budgets & Records</h2>
           <p style={{ color: "var(--text-secondary)", marginTop: "0.25rem" }}>Historical analysis, reporting, and budget reclamation.</p>
         </div>
       </div>

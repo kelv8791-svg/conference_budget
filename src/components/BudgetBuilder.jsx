@@ -234,8 +234,8 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
   const availItems = inventory.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()) && !selectedItems.find(s => s.id === i.id));
 
   return (
-    <div className="fade-in print-container">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "2rem" }} className="no-print">
+    <div className="fade-in print-container budget-page">
+      <div className="page-header no-print">
         <div>
           <h2 style={{ fontSize: "1.75rem", fontWeight: 800 }}>Budget Builder</h2>
           <p style={{ color: "var(--text-secondary)", marginTop: "0.25rem" }}>Create, edit, and track event budgets with historical referencing.</p>
@@ -260,9 +260,9 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
         </div>
       </div>
 
-      <div className="card no-print" style={{ marginBottom: "1rem", background: "#FFF7ED", border: "1px solid #FFEDD5", padding: "1rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-          <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "#9A3412" }}>Event Metrics & Details</h3>
+      <div className="card no-print budget-details-card">
+        <div className="budget-details-header">
+          <h3>Event Details</h3>
           {editingBudgetId && (
             <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
               {isCompleted && <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--danger-color)", background: "var(--danger-light)", padding: "0.25rem 0.5rem", borderRadius: "0.25rem" }}>🔒 LOCKED FOR EDITS</span>}
@@ -290,7 +290,7 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
           )}
         </div>
         
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.75rem", marginBottom: "0.75rem", opacity: isCompleted ? 0.6 : 1, pointerEvents: isCompleted ? "none" : "auto" }}>
+        <div className="budget-info-grid" style={{ opacity: isCompleted ? 0.6 : 1, pointerEvents: isCompleted ? "none" : "auto" }}>
           <div>
             <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.25rem", color: "var(--text-secondary)" }}>Organization Name(s) <span style={{ color: "var(--primary-color)", fontWeight: 800 }}>(Separate with comma for multiple groups)</span></label>
             <input 
@@ -334,7 +334,7 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
           </div>
         </div>
 
-        <div style={{ maxHeight: "300px", overflowY: "auto", marginTop: "0.5rem" }}>
+        <div className="event-groups-list">
           {eventGroups.map((group, idx) => (
             <div key={idx} style={{ 
               display: "grid", 
@@ -372,8 +372,8 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
           ))}
         </div>
         
-        <div style={{ marginTop: "0.75rem", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #FED7AA", paddingTop: "0.75rem" }}>
-           <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+        <div className="budget-summary-strip">
+           <div className="budget-summary-meta">
               <p style={{ fontSize: "0.75rem", color: "#9A3412", fontWeight: 800 }}>Total Event PAX: {totalPax}</p>
               <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", fontWeight: 600 }}>Overall Dates: {displayDates}</p>
            </div>
@@ -396,8 +396,8 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
 
 
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "1rem" }} className="no-print">
-        <div className="card" style={{ maxHeight: "60vh", overflowY: "auto", padding: "1rem", background: "rgba(120, 113, 108, 0.05)", border: "1px solid rgba(120, 113, 108, 0.1)", opacity: isCompleted ? 0.5 : 1, pointerEvents: isCompleted ? "none" : "auto" }}>
+      <div className="budget-workspace no-print">
+        <div className="card inventory-picker" style={{ opacity: isCompleted ? 0.5 : 1, pointerEvents: isCompleted ? "none" : "auto" }}>
           <h3 style={{ fontSize: "1rem", fontWeight: 800, marginBottom: "0.75rem", color: "#57534E" }}>Master Inventory</h3>
           <input className="input-field" placeholder="Search items to add..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={{ marginBottom: "1rem" }} disabled={isCompleted} />
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
@@ -427,8 +427,8 @@ export default function BudgetBuilder({ inventory, budgets, setBudgets, preloadI
           </div>
         </div>
 
-        <div className="card" style={{ padding: 0, overflow: "hidden", background: "rgba(0, 0, 0, 0.03)", border: "1px solid rgba(0, 0, 0, 0.08)" }}>
-          <div style={{ padding: "1.5rem", borderBottom: "1px solid var(--border-light)", background: "white", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div className="card budget-items-card">
+          <div className="budget-items-header">
             <h3 style={{ fontSize: "1.125rem", fontWeight: 700, color: "#1F2937" }}>Budget Items</h3>
             <div style={{ textAlign: "right" }}>
                 <span style={{ fontSize: "0.7rem", color: "var(--text-secondary)", textTransform: "uppercase", fontWeight: 700 }}>Estimated Total ({totalWorkshopAmount > 0 ? ((currentCost / totalWorkshopAmount) * 100).toFixed(1) : 0}%)</span>

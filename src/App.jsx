@@ -445,8 +445,6 @@ export default function App() {
     }
   };
 
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-
   // Manual refresh function for sync recovery
   const refreshData = async () => {
     try {
@@ -531,14 +529,12 @@ export default function App() {
   }
 
   return (
-    <div className={`app-container ${isSidebarCollapsed ? 'collapsed' : ''}`} style={{ display: "flex", background: "var(--bg-body)", minHeight: "100vh", position: "relative" }}>
+    <div className="app-container" style={{ display: "flex", background: "var(--bg-body)", minHeight: "100vh", position: "relative" }}>
 <Sidebar
         role={role}
         active={section}
         onNav={setSection}
         onLogout={async () => { await supabase.auth.signOut(); setRole(null); setSection(null); setSelectedDepartment(null); }}
-        isCollapsed={isSidebarCollapsed}
-        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         isOnline={isOnline}
         syncing={syncing}
         errorMsg={errorMsg}

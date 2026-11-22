@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { 
   LayoutDashboard, PackageSearch, FileText, ClipboardList, 
-  LogOut, Users, Menu, X, ChevronLeft, ChevronRight, 
+  LogOut, Menu, X,
   Wifi, WifiOff, RefreshCw, History
 } from 'lucide-react';
 
 export default function Sidebar({
-  role, active, onNav, onLogout, isCollapsed, onToggleCollapse,
+  role, active, onNav, onLogout,
   isOnline, syncing, errorMsg, lowStockCount, onRefresh
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -61,48 +61,28 @@ export default function Sidebar({
 
       <div 
         style={{ 
-          width: isCollapsed ? 80 : 230, 
+          width: 232,
           background: "#fff", 
           borderRight: "1px solid var(--border-light)", 
           display: "flex", 
           flexDirection: "column", 
           minHeight: "100vh", 
-          transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
           position: "relative"
         }} 
-        className={`sidebar no-print ${isOpen ? 'mobile-open' : ''} ${isCollapsed ? 'collapsed' : ''}`}
+        className={`sidebar no-print ${isOpen ? 'mobile-open' : ''}`}
       >
-        
-        {/* Collapse Toggle Button (Desktop Only) */}
-        <button 
-          onClick={onToggleCollapse}
-          className="no-mobile"
-          style={{
-            position: "absolute", right: -12, top: 32, width: 24, height: 24,
-            background: "white", border: "1px solid var(--border-light)",
-            borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer", boxShadow: "var(--shadow-sm)", zIndex: 10,
-            color: "var(--text-secondary)"
-          }}
-        >
-          {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-        </button>
-
-        <div style={{ padding: isCollapsed ? "1rem" : "1.5rem", borderBottom: "1px solid var(--border-light)", textAlign: "center", minHeight: 80, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          {isCollapsed ? (
-            <div className="brand-mark">E</div>
-          ) : (
-            <div className="sidebar-brand sidebar-brand-text">
-              <strong>EPASHIKINO</strong>
-              <span>OPERATIONS</span>
-            </div>
-          )}
+        <div className="sidebar-header">
+          <div className="sidebar-brand sidebar-brand-text">
+            <strong>EPASHIKINO</strong>
+            <span>OPERATIONS</span>
+          </div>
+          <div className="sidebar-role">
+            {role === "chef" ? "Head Chef" : "Storekeeper"}
+          </div>
         </div>
         
-        <div className="sidebar-navigation" style={{ padding: isCollapsed ? "1rem 0.5rem" : "0.9rem 0.85rem" }}>
-          {!isCollapsed && (
-            <p className="menu-header" style={{ fontSize: "0.65rem", textTransform: "uppercase", fontWeight: 800, color: "var(--text-secondary)", letterSpacing: "0.05em", marginBottom: "0.75rem", paddingLeft: "0.5rem" }}>Main Menu</p>
-          )}
+        <div className="sidebar-navigation" style={{ padding: "0.9rem 0.75rem" }}>
+          <p className="menu-header" style={{ fontSize: "0.65rem", textTransform: "uppercase", fontWeight: 800, color: "var(--text-secondary)", letterSpacing: "0.05em", marginBottom: "0.75rem", paddingLeft: "0.5rem" }}>Main Menu</p>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
             {navItems.map(item => {
               const Icon = item.icon;
@@ -115,18 +95,17 @@ export default function Sidebar({
                     onNav(item.id);
                     setIsOpen(false);
                   }}
-                  title={isCollapsed ? item.label : ""}
                   style={{
-                    display: "flex", alignItems: "center", justifyContent: isCollapsed ? "center" : "flex-start", 
-                    gap: isCollapsed ? "0" : "0.75rem", width: "100%", 
-                    padding: isCollapsed ? "0.75rem" : "0.65rem 1rem", 
+                    display: "flex", alignItems: "center", justifyContent: "flex-start", 
+                    gap: "0.75rem", width: "100%", 
+                    padding: "0.65rem 0.75rem", 
                     borderRadius: "0.5rem", border: "none", cursor: "pointer",
                     fontWeight: isActive ? 600 : 500,
                     position: "relative"
                   }}
                 >
-                  <Icon size={isCollapsed ? 20 : 18} />
-                  {!isCollapsed && <span className="sidebar-label" style={{ fontSize: "0.875rem", flex: 1 }}>{item.label}</span>}
+                  <Icon size={18} />
+                  <span className="sidebar-label" style={{ fontSize: "0.875rem", flex: 1 }}>{item.label}</span>
                   {item.id === "inventory" && lowStockCount > 0 && (
                     <span style={{ 
                       background: "var(--danger-color)", color: "white", 
@@ -143,13 +122,13 @@ export default function Sidebar({
           </div>
         </div>
         
-        <div style={{ marginTop: "auto", padding: isCollapsed ? "1rem 0.5rem" : "1.25rem", borderTop: "1px solid var(--border-light)", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <div className="sidebar-footer" style={{ marginTop: "auto", padding: "10px 12px", borderTop: "1px solid var(--border-light)", display: "flex", flexDirection: "column", gap: "8px" }}>
           {/* Cloud Status */}
           <div 
             onClick={() => errorMsg && alert(`Connection Details: \n${errorMsg}`)}
             style={{ 
-              display: "flex", alignItems: "center", justifyContent: isCollapsed ? "center" : "flex-start", 
-              gap: "0.75rem", padding: isCollapsed ? "0" : "0.5rem 0.75rem", 
+              display: "flex", alignItems: "center", justifyContent: "flex-start", 
+              gap: "0.75rem", padding: "0.5rem 0.75rem", 
               borderRadius: "0.5rem", background: isOnline ? "var(--success-light)" : "var(--danger-light)",
               cursor: errorMsg ? "help" : "default"
             }}
@@ -160,8 +139,7 @@ export default function Sidebar({
               <WifiOff size={16} color="var(--danger-color)" />
             )}
             
-            {!isCollapsed && (
-              <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ 
                   fontSize: "0.7rem", fontWeight: 800, 
                   color: isOnline ? "var(--success-color)" : "var(--danger-color)",
@@ -170,9 +148,8 @@ export default function Sidebar({
                   {syncing ? "Syncing..." : (isOnline ? "Cloud Connected" : "Offline")}
                 </p>
               </div>
-            )}
             
-            {!isCollapsed && !syncing && (
+            {!syncing && (
               <button
                 onClick={onRefresh}
                 title="Refresh Data"
@@ -190,19 +167,18 @@ export default function Sidebar({
 
           <button
             onClick={onLogout}
-            title={isCollapsed ? "Switch Role" : ""}
             style={{
-              display: "flex", alignItems: "center", justifyContent: isCollapsed ? "center" : "flex-start",
-              gap: isCollapsed ? "0" : "0.75rem", width: "100%", 
-              padding: isCollapsed ? "0.75rem" : "0.65rem 1rem",
+              display: "flex", alignItems: "center", justifyContent: "flex-start",
+              gap: "0.75rem", width: "100%", 
+              padding: "0.65rem 0.75rem",
               borderRadius: "0.5rem", border: "none", cursor: "pointer",
               background: "#F1F5F9", color: "var(--text-secondary)", fontWeight: 600, transition: "all 0.2s"
             }}
             onMouseEnter={(e) => { e.currentTarget.style.background = "var(--danger-light)"; e.currentTarget.style.color = "var(--danger-color)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "#F1F5F9"; e.currentTarget.style.color = "var(--text-secondary)"; }}
           >
-            <LogOut size={isCollapsed ? 20 : 18} />
-            {!isCollapsed && <span className="sidebar-label" style={{ fontSize: "0.875rem" }}>Switch Role</span>}
+            <LogOut size={18} />
+            <span className="sidebar-label" style={{ fontSize: "0.875rem" }}>Switch Role</span>
           </button>
         </div>
       </div>

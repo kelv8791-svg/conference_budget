@@ -122,16 +122,16 @@ export default function PastBudgets({ inventory, budgets, setBudgets, onEdit, on
   };
 
   return (
-    <div className="fade-in">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "2rem" }}>
+    <div className="fade-in past-budgets-page">
+      <div className="page-header">
         <div>
           <h2 style={{ fontSize: "1.75rem", fontWeight: 800 }}>Past Budgets & Records</h2>
           <p style={{ color: "var(--text-secondary)", marginTop: "0.25rem" }}>Historical analysis, reporting, and budget reclamation.</p>
         </div>
       </div>
 
-      <div className="card" style={{ background: "rgba(255, 237, 213, 0.4)", border: "1px solid #FED7AA", padding: "1.5rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", gap: "1rem" }}>
+      <div className="card past-budgets-card">
+        <div className="past-budgets-toolbar">
           <div style={{ position: "relative", flex: 1, maxWidth: "400px" }}>
             <input 
               className="input-field" 
@@ -142,13 +142,13 @@ export default function PastBudgets({ inventory, budgets, setBudgets, onEdit, on
             />
             <Search size={18} style={{ position: "absolute", left: "0.85rem", top: "50%", transform: "translateY(-50%)", color: "var(--text-secondary)", opacity: 0.5 }} />
           </div>
-          <div style={{ fontSize: "0.875rem", color: "var(--text-secondary)", fontWeight: 600 }}>
+          <div className="past-record-count">
              Showing {filteredHistory.length} records
           </div>
         </div>
         
-        <div className="table-wrapper" style={{ background: "white", boxShadow: "var(--shadow-sm)" }}>
-          <table style={{ fontSize: "0.875rem" }}>
+        <div className="table-wrapper past-budgets-table">
+          <table>
             <thead>
               <tr style={{ background: "#FFF7ED" }}>
                 <th style={{ padding: "1rem" }}>Date Saved</th>

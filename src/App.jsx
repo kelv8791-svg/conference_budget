@@ -224,6 +224,7 @@ function Login({ onLoginError, department, onBack }) {
 
 export default function App() {
   const [role, setRole] = useState(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [selectedDepartment, setSelectedDepartment] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
@@ -540,8 +541,10 @@ export default function App() {
         errorMsg={errorMsg}
         lowStockCount={appData.inventory.filter(i => i.stock < 10).length}
         onRefresh={refreshData}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(value => !value)}
       />
-      <div className="app-content" style={{ 
+      <div className={`app-content ${isSidebarCollapsed ? "sidebar-collapsed" : ""}`} style={{ 
         flex: 1, 
         padding: "1.25rem 1.5rem", 
         overflowY: "auto", 

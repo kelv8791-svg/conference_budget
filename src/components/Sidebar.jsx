@@ -7,7 +7,8 @@ import {
 
 export default function Sidebar({
   role, active, onNav, onLogout,
-  isOnline, syncing, errorMsg, lowStockCount, onRefresh
+  isOnline, syncing, errorMsg, lowStockCount, onRefresh,
+  isCollapsed, onToggleCollapse
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -34,6 +35,16 @@ export default function Sidebar({
 
   return (
     <>
+      <button
+        className="sidebar-collapse-toggle no-mobile"
+        type="button"
+        onClick={onToggleCollapse}
+        aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        style={{ left: isCollapsed ? 64 : 220 }}
+      >
+        {isCollapsed ? "›" : "‹"}
+      </button>
       <button 
         className="mobile-toggle"
         onClick={() => setIsOpen(!isOpen)}
@@ -61,7 +72,7 @@ export default function Sidebar({
 
       <div 
         style={{ 
-          width: 232,
+          width: isCollapsed ? 76 : 232,
           background: "#fff", 
           borderRight: "1px solid var(--border-light)", 
           display: "flex", 
@@ -69,7 +80,7 @@ export default function Sidebar({
           minHeight: "100vh", 
           position: "relative"
         }} 
-        className={`sidebar no-print ${isOpen ? 'mobile-open' : ''}`}
+        className={`sidebar no-print ${isOpen ? 'mobile-open' : ''} ${isCollapsed ? 'collapsed' : ''}`}
       >
         <div className="sidebar-header">
           <div className="sidebar-brand sidebar-brand-text">
@@ -91,6 +102,7 @@ export default function Sidebar({
                 <button
                   key={item.id}
                   className={`sidebar-nav-item ${isActive ? "active" : ""}`}
+                  title={isCollapsed ? item.label : undefined}
                   onClick={() => {
                     onNav(item.id);
                     setIsOpen(false);
@@ -157,8 +169,6 @@ export default function Sidebar({
                   background: "none", border: "none", padding: "0.25rem",
                   cursor: "pointer", color: "var(--text-secondary)", opacity: 0.7, marginLeft: "auto"
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.color = "var(--primary-color)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.7"; e.currentTarget.style.color = "var(--text-secondary)"; }}
               >
                 <RefreshCw size={14} />
               </button>
@@ -172,10 +182,8 @@ export default function Sidebar({
               gap: "0.75rem", width: "100%", 
               padding: "0.65rem 0.75rem",
               borderRadius: "0.5rem", border: "none", cursor: "pointer",
-              background: "#F1F5F9", color: "var(--text-secondary)", fontWeight: 600, transition: "all 0.2s"
+              background: "transparent", color: "var(--text-primary)", fontWeight: 600, transition: "all 0.2s"
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--danger-light)"; e.currentTarget.style.color = "var(--danger-color)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "#F1F5F9"; e.currentTarget.style.color = "var(--text-secondary)"; }}
           >
             <LogOut size={18} />
             <span className="sidebar-label" style={{ fontSize: "0.875rem" }}>Switch Role</span>
